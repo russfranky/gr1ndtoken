@@ -1,4 +1,9 @@
-# Wallet mining for online games
+<p>
+  <img src="assets/solana/solanaLogoMark.svg" width="26" alt="Solana logomark">
+  <b>Built on Solana</b>
+</p>
+
+# gr1ndtoken — wallet mining
 
 Wallet mining is a game mechanic where every in-game action generates a real
 cryptographic wallet, and a derived address that matches a rare pattern means
@@ -9,6 +14,18 @@ This repo catalogs the research behind the idea: the rarity math, chain
 selection, roll-binding cryptography, proof-of-personhood research, and the
 interactive proof of concept. Companion to the article that started it:
 https://russfranky.substack.com/p/wallet-mining-in-gaming
+
+## Built on Solana
+
+<p>
+  <img src="assets/solana/solanaLogo.svg" width="220" alt="Solana">
+</p>
+
+gr1ndtoken is built on [Solana](https://solana.com): sub-second finality,
+fractions-of-a-cent fees, and native Ed25519 signature verification via
+precompiles — which is what makes on-chain vanity claim verification cheap
+enough to work. Official Solana brand assets live in `assets/solana/`
+(logomark, wordmark, lockups; brand colors `#9945FF` / `#14F195`).
 
 ## Settled architecture (from the research)
 
@@ -75,6 +92,8 @@ Base/EVM ticket design above beyond the shared rarity-math idea.
 - `solana/ui/`: landing / grinder / leaderboard mockups (local HTML) with
   renders at 390px and 1440px.
 - `solana/BRAND.md`: provisional brand notes (deferred).
+- Offline by design: grinding is pure local key generation — no connection
+  needed. Only the on-chain claim touches the network.
 
 ## Status, honestly
 
