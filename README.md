@@ -5,6 +5,8 @@
 
 # gr1ndtoken — wallet mining
 
+Inspired by the original essay: [Wallet mining in gaming](https://russfranky.substack.com/p/wallet-mining-in-gaming).
+
 Wallet mining is a game mechanic where every in-game action generates a real
 cryptographic wallet, and a derived address that matches a rare pattern means
 the player mined a rare item. Rarity comes from the address itself, so the
@@ -72,7 +74,10 @@ enough to work. Official Solana brand assets live in `assets/solana/`
 
 A second, independent experiment: anonymous Solana launch where users grind
 vanity addresses locally and claim SPL rewards on-chain. No relation to the
-Base/EVM ticket design above beyond the shared rarity-math idea.
+Base/EVM ticket design above beyond the shared rarity-math idea. Like the rest
+of this repo, it traces back to the original
+[Wallet mining in gaming](https://russfranky.substack.com/p/wallet-mining-in-gaming)
+essay.
 
 - `solana/SPEC-DRAFT.md`: mechanism spec (local Ed25519 keygen, pattern
   scoring, signature-proof claims, PDA duplicate registry, payout multiplier
