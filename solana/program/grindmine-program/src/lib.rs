@@ -21,7 +21,7 @@ use solana_program::{
     entrypoint::ProgramResult,
     instruction::{AccountMeta, Instruction},
     msg,
-    program::{invoke_signed},
+    program::{invoke, invoke_signed},
     program_error::ProgramError,
     program_pack::Pack,
     pubkey::Pubkey,
@@ -38,31 +38,93 @@ const SEED_MINT_AUTH: &[u8] = b"grindmine-mintauth";
 const CONFIG_DISCRIMINATOR: [u8; 8] = *b"GRINDM01";
 const CLAIM_DISCRIMINATOR: [u8; 8] = *b"GRINDCLM";
 
-const MESSAGE_PREFIX: &[u8] = b"GRINDMINE_CLAIM_v1";
+/// v2: binds program_id + mint + miner + dest, killing testnet->mainnet
+/// claim replay (mint differs per deployment) and claim theft.
+const MESSAGE_PREFIX: &[u8] = b"GRINDMINE_CLAIM_v2";
 
 /// Base58 alphabet (Bitcoin/Solana). Excludes 0, O, I, l.
 const B58_ALPHABET: &[u8; 58] =
     b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-/// First base58 char of a 32-byte address is range-limited: 32 bytes cannot
-/// fill the full base58 space (58^44 > 2^256 > 58^43), so the leading digit
-/// is capped at index 17.
-const B58_FIRST18: &[u8; 18] = b"123456789ABCDEFGHJ";
+//
+// NOTE (was B58_FIRST18): a previous version rejected first chars outside
+// "123456789ABCDEFGHJ" as "impossible". That was wrong: ~5.8% of pubkeys
+// encode to <=43 chars and can lead with ANY base58 char (~0.1% each); the
+// 44-char majority leads with 2..=H (~5.8% each, J ~1.3%). No first char is
+// impossible, so the validator accepts all base58 chars everywhere.
 
 const MULTIPLIER_SCALE: u64 = 1_000_000;
 const MULTIPLIER_MIN: u64 = 100_000; // 0.1x
 const MULTIPLIER_MAX: u64 = 10_000_000; // 10x
 
-/// The ONLY key allowed to call `initialize`. Without this, anyone can
-/// front-run the deploy, initialize first with hostile params, and
-/// permanently hijack the launch (red-team C2) — the PDA create would fail
-/// for the real deployer afterwards.
-///
-/// TESTNET value below = the throwaway testnet payer. REPLACE with the real
-/// launch deployer's address before building the mainnet binary.
-pub const INITIALIZE_AUTHORITY: Pubkey = Pubkey::new_from_array([
+// ---------------------------------------------------------------- build gates
+//
+// The initialize authority MUST NOT be the testnet placeholder in a mainnet
+// binary: whoever holds that throwaway key would own the launch.
+// Build with --features mainnet (requires setting the real authority below)
+// or --features testnet (the default).
+
+#[cfg(not(any(feature = "mainnet", feature = "testnet")))]
+compile_error!("grindmine-program must be built with --features mainnet or --features testnet");
+
+#[cfg(all(feature = "mainnet", feature = "testnet"))]
+compile_error!("features \"mainnet\" and \"testnet\" are mutually exclusive");
+
+/// Throwaway testnet payer bytes. A mainnet build embedding these would hand
+/// the launch to whoever holds a leaked testnet key.
+const TESTNET_AUTHORITY_PLACEHOLDER: [u8; 32] = [
     239, 208, 248, 158, 161, 85, 36, 245, 115, 35, 216, 90, 182, 141, 16, 17,
     170, 138, 229, 146, 162, 44, 93, 136, 85, 207, 137, 225, 11, 53, 101, 54,
-]); // H99FnaQtUqGh7BrN3hxQUKo3MDyrMYvwPA1XxfFHjL21 (throwaway testnet)
+]; // H99FnaQtUqGh7BrN3hxQUKo3MDyrMYvwPA1XxfFHjL21 (throwaway testnet)
+
+#[cfg(feature = "mainnet")]
+const fn bytes_is_zero(a: &[u8; 32]) -> bool {
+    let mut i = 0;
+    let mut acc = 0u8;
+    while i < 32 {
+        acc |= a[i];
+        i += 1;
+    }
+    acc == 0
+}
+
+#[cfg(feature = "mainnet")]
+const fn bytes_equal(a: &[u8; 32], b: &[u8; 32]) -> bool {
+    let mut i = 0;
+    let mut diff = 0u8;
+    while i < 32 {
+        diff |= a[i] ^ b[i];
+        i += 1;
+    }
+    diff == 0
+}
+
+/// The ONLY key allowed to call `initialize`. Without this, anyone can
+/// front-run the deploy, initialize first with hostile params, and
+/// permanently hijack the launch (red-team C2).
+#[cfg(feature = "testnet")]
+pub const INITIALIZE_AUTHORITY: Pubkey =
+    Pubkey::new_from_array(TESTNET_AUTHORITY_PLACEHOLDER);
+
+/// Mainnet authority. The build FAILS until this is replaced with the real
+/// launch initializer's bytes (enforced by the const assertions below).
+#[cfg(feature = "mainnet")]
+const MAINNET_INITIALIZE_AUTHORITY: [u8; 32] = [0u8; 32];
+
+#[cfg(feature = "mainnet")]
+pub const INITIALIZE_AUTHORITY: Pubkey =
+    Pubkey::new_from_array(MAINNET_INITIALIZE_AUTHORITY);
+
+#[cfg(feature = "mainnet")]
+const _ASSERT_MAINNET_AUTHORITY_SET: () = {
+    assert!(
+        !bytes_is_zero(&MAINNET_INITIALIZE_AUTHORITY),
+        "MAINNET_INITIALIZE_AUTHORITY is unset: replace with the real launch initializer before building mainnet"
+    );
+    assert!(
+        !bytes_equal(&MAINNET_INITIALIZE_AUTHORITY, &TESTNET_AUTHORITY_PLACEHOLDER),
+        "MAINNET_INITIALIZE_AUTHORITY must not be the testnet placeholder bytes"
+    );
+};
 
 // ---------------------------------------------------------------- errors
 
@@ -85,6 +147,11 @@ pub enum GrindError {
     BadInitializer = 13,
     SupplyExhausted = 14,
     BadInitParams = 15,
+    AlreadyInitialized = 16,
+    MintPreminted = 17,
+    MintFreezeAuthority = 18,
+    BadMintDecimals = 19,
+    PdaConflict = 20,
 }
 
 impl From<GrindError> for ProgramError {
@@ -135,16 +202,15 @@ impl ClaimRecord {
 
 // ---------------------------------------------------------------- helpers
 
-/// Validate a tier pattern. Rejects impossible patterns:
+/// Validate a tier pattern. Rejects unsatisfiable patterns:
 /// - empty or longer than 8 chars
 /// - any char outside the base58 alphabet (0, O, I, l can never appear)
-/// - first char outside the 18 symbols a 32-byte address can lead with
+///
+/// Any base58 char is a legal first char: ~5.8% of pubkeys encode to <=43
+/// chars and can lead with anything, so no first char is "impossible".
 pub fn validate_pattern(pattern: &[u8]) -> Result<(), GrindError> {
     if pattern.is_empty() || pattern.len() > 8 {
         return Err(GrindError::PatternTooLong);
-    }
-    if !B58_FIRST18.contains(&pattern[0]) {
-        return Err(GrindError::InvalidPattern);
     }
     if !pattern.iter().all(|c| B58_ALPHABET.contains(c)) {
         return Err(GrindError::InvalidPattern);
@@ -163,14 +229,33 @@ pub fn validate_init_params(
     window_secs: i64,
     max_supply: u64,
 ) -> Result<(), GrindError> {
+    if pattern.is_empty() || pattern.len() > 8 {
+        return Err(GrindError::BadInitParams.into());
+    }
+    if min_tier == 0 || (min_tier as usize) > pattern.len() {
+        return Err(GrindError::BadInitParams.into());
+    }
     if target_claims_per_window == 0 || window_secs <= 0 || max_supply == 0 {
         return Err(GrindError::BadInitParams.into());
     }
-    // Every payable tier (min_tier..=pattern_len) must have a nonzero payout.
+    // Every payable tier (min_tier..=pattern_len) must have a nonzero payout,
+    // and at the 0.1x multiplier floor the effective payout must still be
+    // >= 1 base unit: a zero payout reverts the claim, the window never
+    // advances, and the tier bricks forever (no admin fix exists).
     for i in (min_tier as usize)..=(pattern.len()) {
-        if payouts[i - 1] == 0 {
+        let p = payouts[i - 1] as u128;
+        if p == 0 {
             return Err(GrindError::BadInitParams.into());
         }
+        if p * (MULTIPLIER_MIN as u128) / (MULTIPLIER_SCALE as u128) < 1 {
+            return Err(GrindError::BadInitParams.into());
+        }
+    }
+    // The richest possible single claim must fit inside the cap, or the top
+    // tier is unclaimable-from-day-one (and the supply tail starves it first).
+    let top = payouts[pattern.len() - 1] as u128;
+    if top * (MULTIPLIER_MAX as u128) / (MULTIPLIER_SCALE as u128) > max_supply as u128 {
+        return Err(GrindError::BadInitParams.into());
     }
     Ok(())
 }
@@ -271,13 +356,133 @@ pub fn verify_ed25519_instruction(
     Ok(())
 }
 
-fn expected_message(program_id: &Pubkey, mined: &[u8; 32], matched: u8) -> Vec<u8> {
-    let mut m = Vec::with_capacity(MESSAGE_PREFIX.len() + 32 + 32 + 1);
+/// The message a miner signs. Binds EVERYTHING an attacker could swap:
+/// program, mint (kills testnet->mainnet replay: mint differs per
+/// deployment), the fee-paying miner, the reward destination, the mined key,
+/// and the tier. A stolen signature cannot be replayed for a different
+/// recipient, payer, or deployment.
+///
+/// Byte layout (179 bytes):
+///   0..18    MESSAGE_PREFIX ("GRINDMINE_CLAIM_v2")
+///   18..50   program_id
+///   50..82   config.mint
+///   82..114  miner (fee payer) pubkey
+///   114..146 dest token account pubkey
+///   146..178 mined pubkey
+///   178      matched tier
+fn expected_message(
+    program_id: &Pubkey,
+    mint: &Pubkey,
+    miner: &Pubkey,
+    dest: &Pubkey,
+    mined: &[u8; 32],
+    matched: u8,
+) -> Vec<u8> {
+    let mut m = Vec::with_capacity(MESSAGE_PREFIX.len() + 32 * 5 + 1);
     m.extend_from_slice(MESSAGE_PREFIX);
     m.extend_from_slice(program_id.as_ref());
+    m.extend_from_slice(mint.as_ref());
+    m.extend_from_slice(miner.as_ref());
+    m.extend_from_slice(dest.as_ref());
     m.extend_from_slice(mined);
     m.push(matched);
-    Ok::<Vec<u8>, GrindError>(m).unwrap_or_default()
+    m
+}
+
+/// Create a PDA-owned account, tolerating a pre-funded (griefed) target.
+///
+/// `system_instruction::create_account` fails if the target already holds
+/// lamports, so anyone can brick `initialize` — or one specific claim — for
+/// the price of a dust transfer: the config/claim PDA addresses are
+/// derivable by anyone, and deploy-then-initialize cannot be atomic.
+///
+/// If the target is pre-funded we take it over instead of failing: top it up
+/// to rent-exemption with a plain transfer, then `allocate` + `assign` via
+/// the PDA seeds. This only proceeds for a plain system-owned account with
+/// empty (dust-grief) or exactly-sized data; anything else fails safe with
+/// `PdaConflict` rather than corrupting state. Callers must still guard
+/// re-initialization / double-claim before calling.
+fn create_pda_account<'a>(
+    payer: &AccountInfo<'a>,
+    target: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+    program_id: &Pubkey,
+    space: u64,
+    seeds: &[&[u8]],
+) -> ProgramResult {
+    let need = Rent::get()?.minimum_balance(space as usize);
+    if target.lamports() == 0 {
+        // Fresh account: the normal path.
+        return invoke_signed(
+            &solana_program::system_instruction::create_account(
+                payer.key,
+                target.key,
+                need,
+                space,
+                program_id,
+            ),
+            &[payer.clone(), target.clone(), system_program.clone()],
+            &[seeds],
+        );
+    }
+    // Pre-funded: only a plain system-owned account can be taken over.
+    if *target.owner != solana_program::system_program::id() {
+        return Err(GrindError::PdaConflict.into());
+    }
+    let data_len = target.data_len();
+    if data_len != 0 && data_len != space as usize {
+        return Err(GrindError::PdaConflict.into());
+    }
+    let top_up = need.saturating_sub(target.lamports());
+    if top_up > 0 {
+        invoke(
+            &solana_program::system_instruction::transfer(payer.key, target.key, top_up),
+            &[payer.clone(), target.clone()],
+        )?;
+    }
+    if data_len == 0 {
+        invoke_signed(
+            &solana_program::system_instruction::allocate(target.key, space),
+            &[target.clone(), system_program.clone()],
+            &[seeds],
+        )?;
+    }
+    invoke_signed(
+        &solana_program::system_instruction::assign(target.key, program_id),
+        &[target.clone(), system_program.clone()],
+        &[seeds],
+    )?;
+    Ok(())
+}
+
+/// Pure difficulty-adjustment step, unit-tested. Returns (new_multiplier,
+/// new_window_start). No-op when the window has not elapsed.
+///
+/// - Normalizes by elapsed windows, so a long lull counts as many windows
+///   instead of one (a single quiet window must not slam 1x -> 10x).
+/// - Bounds the per-adjustment step to [0.5x, 2x] of the previous
+///   multiplier. Hits never expire, so an unbounded jump lets miners hoard
+///   through a lull and dump at the ceiling.
+/// - Absolute clamp [MULTIPLIER_MIN, MULTIPLIER_MAX].
+pub fn adjust_multiplier(
+    multiplier: u64,
+    target_claims_per_window: u64,
+    claims_in_window: u64,
+    window_secs: i64,
+    window_start: i64,
+    now: i64,
+) -> (u64, i64) {
+    if now - window_start < window_secs {
+        return (multiplier, window_start);
+    }
+    let elapsed = (now - window_start).max(0) as u64;
+    let elapsed_windows = (elapsed / window_secs.max(1) as u64).max(1);
+    let per_window = ((claims_in_window as u128) / (elapsed_windows as u128)).max(1);
+    let raw = (multiplier as u128).saturating_mul(target_claims_per_window as u128) / per_window;
+    let lo = (multiplier as u128) / 2;
+    let hi = (multiplier as u128).saturating_mul(2);
+    let stepped = raw.clamp(lo, hi);
+    ((stepped as u64).clamp(MULTIPLIER_MIN, MULTIPLIER_MAX), now)
 }
 
 // ---------------------------------------------------------------- instructions
@@ -314,9 +519,19 @@ fn process_initialize(
     if config_pda != *config_ai.key {
         return Err(GrindError::BadConfigAccount.into());
     }
+    // Re-initialization is forbidden. The only way this PDA is owned by us
+    // is a completed prior initialize (failed txs roll back atomically), so
+    // there is no safe "resume" case — and the authority must not get a
+    // second chance to rewrite the economics.
+    if *config_ai.owner == *program_id {
+        return Err(GrindError::AlreadyInitialized.into());
+    }
     let (mint_auth_pda, mint_auth_bump) = Pubkey::find_program_address(&[SEED_MINT_AUTH], program_id);
 
     // The mint must exist and name our PDA as its authority.
+    if *mint_ai.owner != spl_token::id() {
+        return Err(GrindError::BadMint.into());
+    }
     let mint_data = mint_ai.try_borrow_data()?;
     let mint = spl_token::state::Mint::unpack(&mint_data).map_err(|_| GrindError::BadMint)?;
     drop(mint_data);
@@ -324,20 +539,32 @@ fn process_initialize(
         solana_program::program_option::COption::Some(a) if a == mint_auth_pda => {}
         _ => return Err(GrindError::BadMintAuthority.into()),
     }
+    // The mint must be pristine: a premint is a hidden team allocation, a
+    // freeze authority is holder-freeze power, and decimals are what the
+    // manifest prices against. Without these the "fair launch" is docs-only.
+    if !mint.is_initialized {
+        return Err(GrindError::BadMint.into());
+    }
+    if mint.supply != 0 {
+        msg!("mint has pre-existing supply: {}", mint.supply);
+        return Err(GrindError::MintPreminted.into());
+    }
+    if mint.freeze_authority.is_some() {
+        return Err(GrindError::MintFreezeAuthority.into());
+    }
+    if mint.decimals != 6 {
+        return Err(GrindError::BadMintDecimals.into());
+    }
 
-    // Create the config account (rent-exempt).
-    let rent = Rent::get()?;
-    let lamports = rent.minimum_balance(Config::LEN);
-    invoke_signed(
-        &solana_program::system_instruction::create_account(
-            payer.key,
-            config_ai.key,
-            lamports,
-            Config::LEN as u64,
-            program_id,
-        ),
-        &[payer.clone(), config_ai.clone(), system_program.clone()],
-        &[&[SEED_CONFIG, &[config_bump]]],
+    // Create the config PDA (rent-exempt). Tolerates a griefed pre-funded
+    // PDA instead of bricking the launch (see create_pda_account).
+    create_pda_account(
+        payer,
+        config_ai,
+        system_program,
+        program_id,
+        Config::LEN as u64,
+        &[SEED_CONFIG, &[config_bump]],
     )?;
 
     let mut pat = [0u8; 8];
@@ -410,8 +637,17 @@ fn process_claim(
     }
 
     // 1. Ownership: ed25519 precompile instruction must be ix #0 and bind
-    //    (pubkey, message) to this claim.
-    let message = expected_message(program_id, &mined_pubkey, matched);
+    //    (program, mint, miner, dest, pubkey, tier) to this claim. The
+    //    signature is worthless for any other recipient, payer, or
+    //    deployment — observers cannot steal it.
+    let message = expected_message(
+        program_id,
+        &config.mint,
+        miner.key,
+        dest_ai.key,
+        &mined_pubkey,
+        matched,
+    );
     verify_ed25519_instruction(instructions_sysvar, 0, &mined_pubkey, &message)?;
 
     // 2. Pattern: base58(pubkey) must start with pattern[..matched].
@@ -430,7 +666,11 @@ fn process_claim(
     if claim_pda != *claim_record_ai.key {
         return Err(GrindError::BadConfigAccount.into());
     }
-    if !claim_record_ai.data_is_empty() {
+    // Owned by us <=> a completed prior claim (failed txs roll back, so a
+    // half-written record is impossible). A griefed pre-funded PDA is
+    // system-owned and falls through to create_pda_account, which takes it
+    // over when safe or fails with PdaConflict.
+    if *claim_record_ai.owner == *program_id {
         return Err(GrindError::AlreadyClaimed.into());
     }
 
@@ -443,16 +683,25 @@ fn process_claim(
     }
 
     // 5. Difficulty: smooth adjustment from trailing participation.
+    // Bounded per step and normalized by elapsed windows (see
+    // adjust_multiplier): a quiet window can no longer slam 1x -> 10x for
+    // hoard-and-dump miners.
     let clock = Clock::get()?;
     if clock.unix_timestamp - config.window_start >= config.window_secs {
-        let actual = config.claims_in_window.max(1);
-        let new_mult = (config.multiplier as u128)
-            .saturating_mul(config.target_claims_per_window as u128)
-            / (actual as u128);
-        config.multiplier = (new_mult as u64).clamp(MULTIPLIER_MIN, MULTIPLIER_MAX);
-        config.window_start = clock.unix_timestamp;
+        let (new_mult, new_start) = adjust_multiplier(
+            config.multiplier,
+            config.target_claims_per_window,
+            config.claims_in_window,
+            config.window_secs,
+            config.window_start,
+            clock.unix_timestamp,
+        );
+        if new_mult != config.multiplier {
+            msg!("difficulty adjusted: multiplier={}", new_mult);
+        }
+        config.multiplier = new_mult;
+        config.window_start = new_start;
         config.claims_in_window = 0;
-        msg!("difficulty adjusted: multiplier={}", config.multiplier);
     }
 
     // 6. Payout and mint.
@@ -468,14 +717,17 @@ fn process_claim(
     // C1: hard supply cap. Minting stops when the cap is reached, no matter
     // what the multiplier says. Without this the "fixed supply" claim is
     // docs-only and every valid claim mints forever.
-    let new_total = config
-        .minted_total
-        .checked_add(payout)
-        .ok_or(GrindError::ArithmeticOverflow)?;
-    if new_total > config.max_supply {
+    //
+    // Tail behavior: the final claim mints whatever is left, closing the cap
+    // exactly instead of failing top-tier claims while low-tier dust still
+    // fits (which would strand a remainder and publish stealable
+    // signatures on every failed attempt).
+    let remaining = config.max_supply.saturating_sub(config.minted_total);
+    if remaining == 0 {
         return Err(GrindError::SupplyExhausted.into());
     }
-    config.minted_total = new_total;
+    let payout = payout.min(remaining);
+    config.minted_total = config.minted_total.saturating_add(payout);
 
     let mint_auth_seeds: &[&[u8]] = &[SEED_MINT_AUTH, &[config.mint_auth_bump]];
     invoke_signed(
@@ -496,19 +748,16 @@ fn process_claim(
         &[mint_auth_seeds],
     )?;
 
-    // 7. Mark claimed (registry write) + counters.
-    let rent = Rent::get()?;
-    let lamports = rent.minimum_balance(ClaimRecord::LEN);
-    invoke_signed(
-        &solana_program::system_instruction::create_account(
-            miner.key,
-            claim_record_ai.key,
-            lamports,
-            ClaimRecord::LEN as u64,
-            program_id,
-        ),
-        &[miner.clone(), claim_record_ai.clone(), system_program.clone()],
-        &[&[SEED_CLAIM, &mined_pubkey, &[claim_bump]]],
+    // 7. Mark claimed (registry write) + counters. Tolerates a griefed
+    // pre-funded claim PDA (see create_pda_account); a genuinely
+    // already-claimed hit was rejected in step 3 above.
+    create_pda_account(
+        miner,
+        claim_record_ai,
+        system_program,
+        program_id,
+        ClaimRecord::LEN as u64,
+        &[SEED_CLAIM, &mined_pubkey, &[claim_bump]],
     )?;
     let rec = ClaimRecord { discriminator: CLAIM_DISCRIMINATOR, bump: claim_bump };
     rec.serialize(&mut &mut claim_record_ai.try_borrow_mut_data()?[..])?;
@@ -605,19 +854,33 @@ pub fn build_initialize_ix(
     }
 }
 
-/// Build a `claim` instruction (used by the client).
+/// Build a `claim` instruction (used by the client). Emits ALL accounts in
+/// the exact order `process_claim` expects — no placeholder positions for
+/// the client to splice (a misordered claim fails after the precompile
+/// passes, leaking the signature).
+///
+/// Account order:
+///   0. miner (signer, writable)
+///   1. config PDA (writable)
+///   2. claim record PDA (writable)
+///   3. mint (writable)
+///   4. dest token account (writable)
+///   5. mint authority PDA (readonly)
+///   6. instructions sysvar (readonly)
+///   7. SPL token program (readonly)
+///   8. system program (readonly)
 pub fn build_claim_ix(
     program_id: &Pubkey,
     miner: &Pubkey,
+    mint: &Pubkey,
+    dest_token_account: &Pubkey,
     mined_pubkey: [u8; 32],
     matched: u8,
-    _dest_token_account: &Pubkey,
 ) -> Instruction {
     let (config_pda, _) = Pubkey::find_program_address(&[SEED_CONFIG], program_id);
     let mined = Pubkey::new_from_array(mined_pubkey);
     let (claim_pda, _) = Pubkey::find_program_address(&[SEED_CLAIM, mined.as_ref()], program_id);
     let (mint_auth_pda, _) = Pubkey::find_program_address(&[SEED_MINT_AUTH], program_id);
-    // NOTE: mint + token program are appended by the client after reading config.
     let mut data = vec![1u8];
     data.extend_from_slice(&mined_pubkey);
     data.push(matched);
@@ -627,8 +890,8 @@ pub fn build_claim_ix(
             AccountMeta::new(*miner, true),
             AccountMeta::new(config_pda, false),
             AccountMeta::new(claim_pda, false),
-            // mint (writable) -- filled by client
-            // dest (writable) -- filled by client
+            AccountMeta::new(*mint, false),
+            AccountMeta::new(*dest_token_account, false),
             AccountMeta::new_readonly(mint_auth_pda, false),
             AccountMeta::new_readonly(sysvar::instructions::id(), false),
             AccountMeta::new_readonly(spl_token::id(), false),
@@ -638,9 +901,20 @@ pub fn build_claim_ix(
     }
 }
 
-/// The canonical message a miner signs: prefix || program_id || pubkey || matched.
-pub fn claim_message(program_id: &Pubkey, mined_pubkey: &[u8; 32], matched: u8) -> Vec<u8> {
-    expected_message(program_id, mined_pubkey, matched)
+/// The canonical message a miner signs: prefix || program_id || mint ||
+/// miner || dest_token_account || mined_pubkey || matched.
+///
+/// The miner must sign AFTER choosing payer and destination; the client flow
+/// must collect those first. See `expected_message` for the byte layout.
+pub fn claim_message(
+    program_id: &Pubkey,
+    mint: &Pubkey,
+    miner: &Pubkey,
+    dest_token_account: &Pubkey,
+    mined_pubkey: &[u8; 32],
+    matched: u8,
+) -> Vec<u8> {
+    expected_message(program_id, mint, miner, dest_token_account, mined_pubkey, matched)
 }
 
 #[cfg(test)]
@@ -655,11 +929,14 @@ mod tests {
     }
 
     #[test]
-    fn impossible_first_char_rejected() {
-        // 'Z', 'g', 'z' can never lead a 32-byte base58 address.
-        assert_eq!(validate_pattern(b"Zebra"), Err(GrindError::InvalidPattern));
-        assert_eq!(validate_pattern(b"grind"), Err(GrindError::InvalidPattern));
-        assert_eq!(validate_pattern(b"zzzzz"), Err(GrindError::InvalidPattern));
+    fn rare_first_chars_accepted() {
+        // No first char is impossible: ~5.8% of pubkeys encode to <=43 chars
+        // and can lead with ANY base58 char (~0.1% each). Zebra/grind/zzzzz
+        // are rare, not unsatisfiable — the old B58_FIRST18 model was wrong.
+        assert!(validate_pattern(b"Zebra").is_ok());
+        assert!(validate_pattern(b"grind").is_ok());
+        assert!(validate_pattern(b"zzzzz").is_ok());
+        assert!(validate_pattern(b"1abc").is_ok());
     }
 
     #[test]
@@ -740,6 +1017,74 @@ mod tests {
             validate_init_params(b"Gr1nd", 4, &zero_payout, 100, 86400, 1_000_000),
             Err(GrindError::BadInitParams)
         );
+    }
+
+    #[test]
+    fn init_params_reject_dust_tier_payout() {
+        // At the 0.1x multiplier floor a base payout < 10 yields payout 0:
+        // the claim reverts, the window never advances, the tier bricks.
+        let dust = [0, 0, 0, 5u64, 58_000, 0, 0, 0];
+        assert_eq!(
+            validate_init_params(b"Gr1nd", 4, &dust, 100, 86400, 1_000_000),
+            Err(GrindError::BadInitParams)
+        );
+        // Boundary: payout 10 * 0.1x = 1 base unit, the minimum viable.
+        let ok = [0, 0, 0, 10u64, 58_000, 0, 0, 0];
+        assert!(validate_init_params(b"Gr1nd", 4, &ok, 100, 86400, 1_000_000).is_ok());
+    }
+
+    #[test]
+    fn init_params_reject_top_tier_over_cap() {
+        // Richest possible single claim (10x ceiling) must fit the cap.
+        let fat = [0, 0, 0, 1_000u64, 200_000, 0, 0, 0];
+        assert_eq!(
+            validate_init_params(b"Gr1nd", 4, &fat, 100, 86400, 1_000_000),
+            Err(GrindError::BadInitParams)
+        );
+    }
+
+    #[test]
+    fn claim_message_layout() {
+        let program_id = Pubkey::new_from_array([1u8; 32]);
+        let mint = Pubkey::new_from_array([2u8; 32]);
+        let miner = Pubkey::new_from_array([3u8; 32]);
+        let dest = Pubkey::new_from_array([4u8; 32]);
+        let mined = [5u8; 32];
+        let m = claim_message(&program_id, &mint, &miner, &dest, &mined, 4);
+        assert_eq!(m.len(), 179);
+        assert_eq!(&m[0..18], b"GRINDMINE_CLAIM_v2");
+        assert_eq!(&m[18..50], &[1u8; 32]);
+        assert_eq!(&m[50..82], &[2u8; 32]);
+        assert_eq!(&m[82..114], &[3u8; 32]);
+        assert_eq!(&m[114..146], &[4u8; 32]);
+        assert_eq!(&m[146..178], &[5u8; 32]);
+        assert_eq!(m[178], 4);
+        // Any bound field changing changes the message (no replay swaps).
+        let m2 = claim_message(&program_id, &mint, &miner, &Pubkey::new_from_array([9u8; 32]), &mined, 4);
+        assert_ne!(m, m2);
+    }
+
+    #[test]
+    fn multiplier_step_bounded() {
+        // Quiet window: raw math wants 1x -> 100x, step bound caps at 2x.
+        let (m, _) = adjust_multiplier(1_000_000, 100, 0, 86_400, 0, 86_400);
+        assert_eq!(m, 2_000_000);
+        // Busy window: raw math wants 1x -> 0.1x, step bound floors at 0.5x.
+        let (m, _) = adjust_multiplier(1_000_000, 100, 1_000, 86_400, 0, 86_400);
+        assert_eq!(m, 500_000);
+        // Long lull counts as many windows, not one: 0 claims over 5 windows
+        // still only steps 2x per adjustment (not a single 100x slam).
+        let (m, _) = adjust_multiplier(1_000_000, 100, 0, 86_400, 0, 5 * 86_400);
+        assert_eq!(m, 2_000_000);
+        // On-target: no change.
+        let (m, _) = adjust_multiplier(1_000_000, 100, 100, 86_400, 0, 86_400);
+        assert_eq!(m, 1_000_000);
+        // Window not elapsed: no-op.
+        let (m, s) = adjust_multiplier(1_000_000, 100, 0, 86_400, 1_000, 2_000);
+        assert_eq!((m, s), (1_000_000, 1_000));
+        // Absolute ceiling still holds.
+        let (m, _) = adjust_multiplier(9_000_000, 100, 0, 86_400, 0, 86_400);
+        assert_eq!(m, 10_000_000);
     }
 
     #[test]

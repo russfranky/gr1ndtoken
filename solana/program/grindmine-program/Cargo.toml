@@ -7,6 +7,15 @@ edition = "2021"
 crate-type = ["cdylib", "lib"]
 name = "grindmine_program"
 
+# Build gates for INITIALIZE_AUTHORITY (see src/lib.rs):
+# - default (testnet): throwaway testnet placeholder authority. Safe for testnet.
+# - mainnet: FAILS TO COMPILE until MAINNET_INITIALIZE_AUTHORITY is set to
+#   the real launch initializer AND differs from the testnet placeholder.
+[features]
+default = ["testnet"]
+testnet = []
+mainnet = []
+
 [dependencies]
 solana-program = "2"
 solana-instructions-sysvar = "2"

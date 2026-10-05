@@ -3,3 +3,6 @@ target/
 keys/
 .env
 __pycache__/
+grind-hits.jsonl
+**/grind-hits.jsonl
+*.b64
