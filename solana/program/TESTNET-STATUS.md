@@ -17,10 +17,17 @@ rather than touching mainnet.
   `initialize` (pattern-validating config/manifest PDA) + `claim`
   (ed25519 precompile ownership proof, in-program base58 tier check,
   PDA double-claim registry, SPL mint with trailing-window difficulty
-  multiplier). No admin instructions after initialize.
-- **Unit tests 5/5 pass**: impossible first chars rejected
+  multiplier, on-chain supply cap (`max_supply`/`minted_total`,
+  `SupplyExhausted` past the cap). No admin instructions after initialize;
+  `initialize` restricted to a hardcoded deployer key (front-run guard).
+  Upgrade authority: testnet deploys stay upgradeable by explicit choice
+  (deploy script `--final` flag for immutable); keyfile deletion is NOT
+  claimed as revocation (red-team C3).
+- **Unit tests 8/8 pass**: impossible first chars rejected
   (`Zebra`, `grind`, `zzzzz`), non-base58 chars rejected (`0`,`O`,`I`,`l`),
-  base58 codec verified (known vector + roundtrip).
+  base58 codec verified (known vector + roundtrip), initialize authority
+  placeholder rejected, degenerate init params rejected, Config length
+  matches fields (supply-cap growth accounted).
 - **Client** (`program/grindmine-client/`, builds clean):
   `init`, `claim`, `neg` (double-claim / bad-sig / pattern-mismatch).
 - **Grinder** (`grinder/grind.py`): os.urandom CSPRNG, tier scoring.

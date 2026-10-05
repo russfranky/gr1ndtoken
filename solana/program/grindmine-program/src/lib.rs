@@ -52,6 +52,18 @@ const MULTIPLIER_SCALE: u64 = 1_000_000;
 const MULTIPLIER_MIN: u64 = 100_000; // 0.1x
 const MULTIPLIER_MAX: u64 = 10_000_000; // 10x
 
+/// The ONLY key allowed to call `initialize`. Without this, anyone can
+/// front-run the deploy, initialize first with hostile params, and
+/// permanently hijack the launch (red-team C2) — the PDA create would fail
+/// for the real deployer afterwards.
+///
+/// TESTNET value below = the throwaway testnet payer. REPLACE with the real
+/// launch deployer's address before building the mainnet binary.
+pub const INITIALIZE_AUTHORITY: Pubkey = Pubkey::new_from_array([
+    239, 208, 248, 158, 161, 85, 36, 245, 115, 35, 216, 90, 182, 141, 16, 17,
+    170, 138, 229, 146, 162, 44, 93, 136, 85, 207, 137, 225, 11, 53, 101, 54,
+]); // H99FnaQtUqGh7BrN3hxQUKo3MDyrMYvwPA1XxfFHjL21 (throwaway testnet)
+
 // ---------------------------------------------------------------- errors
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,6 +82,9 @@ pub enum GrindError {
     BadDestination = 10,
     BadConfigAccount = 11,
     ArithmeticOverflow = 12,
+    BadInitializer = 13,
+    SupplyExhausted = 14,
+    BadInitParams = 15,
 }
 
 impl From<GrindError> for ProgramError {
@@ -98,10 +113,14 @@ pub struct Config {
     pub window_start: i64,
     pub claims_in_window: u64,
     pub total_claims: u64,
+    /// Hard supply cap (mint base units). Enforced in process_claim: minting
+    /// stops when minted_total would exceed this. Red-team C1.
+    pub max_supply: u64,
+    pub minted_total: u64,
 }
 
 impl Config {
-    pub const LEN: usize = 8 + 32 + 1 + 1 + 8 + 1 + 1 + 64 + 8 + 8 + 8 + 8 + 8 + 8;
+    pub const LEN: usize = 8 + 32 + 1 + 1 + 8 + 1 + 1 + 64 + 8 + 8 + 8 + 8 + 8 + 8 + 8 + 8;
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
@@ -129,6 +148,29 @@ pub fn validate_pattern(pattern: &[u8]) -> Result<(), GrindError> {
     }
     if !pattern.iter().all(|c| B58_ALPHABET.contains(c)) {
         return Err(GrindError::InvalidPattern);
+    }
+    Ok(())
+}
+
+/// Validate initialize() params. Pure function, unit-tested. Bad economics
+/// set here are permanent — no admin instruction exists to fix them later
+/// (red-team H5/M4).
+pub fn validate_init_params(
+    pattern: &[u8],
+    min_tier: u8,
+    payouts: &[u64; 8],
+    target_claims_per_window: u64,
+    window_secs: i64,
+    max_supply: u64,
+) -> Result<(), GrindError> {
+    if target_claims_per_window == 0 || window_secs <= 0 || max_supply == 0 {
+        return Err(GrindError::BadInitParams.into());
+    }
+    // Every payable tier (min_tier..=pattern_len) must have a nonzero payout.
+    for i in (min_tier as usize)..=(pattern.len()) {
+        if payouts[i - 1] == 0 {
+            return Err(GrindError::BadInitParams.into());
+        }
     }
     Ok(())
 }
@@ -248,6 +290,7 @@ fn process_initialize(
     payouts: [u64; 8],
     target_claims_per_window: u64,
     window_secs: i64,
+    max_supply: u64,
 ) -> ProgramResult {
     let iter = &mut accounts.iter();
     let payer = next_account_info(iter)?;
@@ -255,10 +298,17 @@ fn process_initialize(
     let mint_ai = next_account_info(iter)?;
     let system_program = next_account_info(iter)?;
 
+    // C2: only the hardcoded launch deployer may initialize. Anyone else
+    // front-running this instruction would permanently hijack the launch.
+    if !payer.is_signer || *payer.key != INITIALIZE_AUTHORITY {
+        return Err(GrindError::BadInitializer.into());
+    }
+
     validate_pattern(&pattern)?;
     if min_tier == 0 || min_tier as usize > pattern.len() {
         return Err(GrindError::BadTier.into());
     }
+    validate_init_params(&pattern, min_tier, &payouts, target_claims_per_window, window_secs, max_supply)?;
 
     let (config_pda, config_bump) = Pubkey::find_program_address(&[SEED_CONFIG], program_id);
     if config_pda != *config_ai.key {
@@ -308,6 +358,8 @@ fn process_initialize(
         window_start: clock.unix_timestamp,
         claims_in_window: 0,
         total_claims: 0,
+        max_supply,
+        minted_total: 0,
     };
     cfg.serialize(&mut &mut config_ai.try_borrow_mut_data()?[..])?;
     msg!("grindmine initialized: pattern={} min_tier={}",
@@ -413,6 +465,18 @@ fn process_claim(
         return Err(GrindError::ArithmeticOverflow.into());
     }
 
+    // C1: hard supply cap. Minting stops when the cap is reached, no matter
+    // what the multiplier says. Without this the "fixed supply" claim is
+    // docs-only and every valid claim mints forever.
+    let new_total = config
+        .minted_total
+        .checked_add(payout)
+        .ok_or(GrindError::ArithmeticOverflow)?;
+    if new_total > config.max_supply {
+        return Err(GrindError::SupplyExhausted.into());
+    }
+    config.minted_total = new_total;
+
     let mint_auth_seeds: &[&[u8]] = &[SEED_MINT_AUTH, &[config.mint_auth_bump]];
     invoke_signed(
         &spl_token::instruction::mint_to(
@@ -469,13 +533,13 @@ pub fn process_instruction(
     let (tag, rest) = input.split_first().ok_or(ProgramError::InvalidInstructionData)?;
     match tag {
         // initialize | pattern_len:u8 | pattern[..len] | min_tier:u8 |
-        //             payouts:[u64;8] | target:u64 | window_secs:i64
+        //             payouts:[u64;8] | target:u64 | window_secs:i64 | max_supply:u64
         0 => {
             if rest.len() < 2 {
                 return Err(ProgramError::InvalidInstructionData);
             }
             let plen = rest[0] as usize;
-            if rest.len() < 1 + plen + 1 + 64 + 8 + 8 {
+            if rest.len() < 1 + plen + 1 + 64 + 8 + 8 + 8 {
                 return Err(ProgramError::InvalidInstructionData);
             }
             let pattern = rest[1..1 + plen].to_vec();
@@ -489,7 +553,9 @@ pub fn process_instruction(
             let target = u64::from_le_bytes(rest[off..off + 8].try_into().unwrap());
             off += 8;
             let window_secs = i64::from_le_bytes(rest[off..off + 8].try_into().unwrap());
-            process_initialize(program_id, accounts, pattern, min_tier, payouts, target, window_secs)
+            off += 8;
+            let max_supply = u64::from_le_bytes(rest[off..off + 8].try_into().unwrap());
+            process_initialize(program_id, accounts, pattern, min_tier, payouts, target, window_secs, max_supply)
         }
         // claim | mined_pubkey:[u8;32] | matched:u8
         1 => {
@@ -515,6 +581,7 @@ pub fn build_initialize_ix(
     payouts: [u64; 8],
     target_claims_per_window: u64,
     window_secs: i64,
+    max_supply: u64,
 ) -> Instruction {
     let (config_pda, _) = Pubkey::find_program_address(&[SEED_CONFIG], program_id);
     let mut data = vec![0u8, pattern.len() as u8];
@@ -525,6 +592,7 @@ pub fn build_initialize_ix(
     }
     data.extend_from_slice(&target_claims_per_window.to_le_bytes());
     data.extend_from_slice(&window_secs.to_le_bytes());
+    data.extend_from_slice(&max_supply.to_le_bytes());
     Instruction {
         program_id: *program_id,
         accounts: vec![
@@ -636,5 +704,47 @@ mod tests {
         // num is little-endian u32 words; input was big-endian bytes
         back.reverse();
         assert_eq!(back, input);
+    }
+
+    #[test]
+    fn initialize_authority_is_set() {
+        // The launch build must not ship with a placeholder authority:
+        // anyone could call initialize() otherwise (red-team C2).
+        assert_ne!(INITIALIZE_AUTHORITY, Pubkey::default());
+    }
+
+    #[test]
+    fn init_params_reject_degenerate() {
+        let payouts = [0, 0, 0, 1_000u64, 58_000, 0, 0, 0];
+        assert!(validate_init_params(b"Gr1nd", 4, &payouts, 100, 86400, 1_000_000).is_ok());
+        // zero target / window / supply
+        assert_eq!(
+            validate_init_params(b"Gr1nd", 4, &payouts, 0, 86400, 1_000_000),
+            Err(GrindError::BadInitParams)
+        );
+        assert_eq!(
+            validate_init_params(b"Gr1nd", 4, &payouts, 100, 0, 1_000_000),
+            Err(GrindError::BadInitParams)
+        );
+        assert_eq!(
+            validate_init_params(b"Gr1nd", 4, &payouts, 100, -5, 1_000_000),
+            Err(GrindError::BadInitParams)
+        );
+        assert_eq!(
+            validate_init_params(b"Gr1nd", 4, &payouts, 100, 86400, 0),
+            Err(GrindError::BadInitParams)
+        );
+        // zero payout on a payable tier (4-char tier here)
+        let zero_payout = [0u64; 8];
+        assert_eq!(
+            validate_init_params(b"Gr1nd", 4, &zero_payout, 100, 86400, 1_000_000),
+            Err(GrindError::BadInitParams)
+        );
+    }
+
+    #[test]
+    fn config_len_matches_fields() {
+        // max_supply + minted_total added for the C1 supply cap.
+        assert_eq!(Config::LEN, 180);
     }
 }

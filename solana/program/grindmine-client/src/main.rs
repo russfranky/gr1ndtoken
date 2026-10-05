@@ -2,8 +2,8 @@
 //!
 //! Commands:
 //!   init   --program <id> --payer <keyfile> --pattern Gr1nd --min-tier 4
-//!   claim  --program <id> --payer <keyfile> --key <base64-secret> --matched 4
-//!   neg    --program <id> --payer <keyfile> --key <base64-secret> --matched 4 --case double|badsig|mismatch
+//!   claim  --program <id> --payer <keyfile> --keyfile <secret-file> --matched 4
+//!   neg    --program <id> --payer <keyfile> --keyfile <secret-file> --matched 4 --case double|badsig|mismatch
 //!
 //! The payer is a THROWAWAY testnet wallet. Never mainnet.
 
@@ -95,6 +95,7 @@ fn cmd_init(program: Pubkey, payer_path: &str, rpc: &str) {
 
     // 2. Initialize the program config / manifest.
     //    Demo tier table: 4-char "Gr1n" hits pay 1000 tokens, 5-char "Gr1nd" 58000.
+    //    Demo supply cap: 1B tokens (6 decimals) — enforced on-chain (red-team C1).
     let payouts: [u64; 8] = [0, 0, 0, 1_000_000_000, 58_000_000_000, 0, 0, 0];
     let ix = build_initialize_ix(
         &program,
@@ -103,8 +104,9 @@ fn cmd_init(program: Pubkey, payer_path: &str, rpc: &str) {
         b"Gr1nd",
         4,
         payouts,
-        100,    // target claims per window
-        86400,  // 1-day window
+        100,                // target claims per window
+        86400,              // 1-day window
+        1_000_000_000_000_000, // max supply, base units
     );
     let sig = send_and_confirm(&client, vec![ix], &[&payer]).expect("initialize");
     let (cfg_pda, _) = config_pda(&program);
@@ -172,13 +174,16 @@ fn do_claim(
     client: &RpcClient,
     program: &Pubkey,
     payer: &Keypair,
-    mined_secret_b64: &str,
+    mined_keyfile: &str,
     matched: u8,
     tamper: Tamper,
 ) -> Result<String, String> {
     use base64::Engine;
+    // M1: the mined secret is read from a file, never from argv
+    // (argv is visible in ps output, shell history, CI logs).
+    let raw = std::fs::read_to_string(mined_keyfile).map_err(|e| e.to_string())?;
     let secret = base64::engine::general_purpose::STANDARD
-        .decode(mined_secret_b64.trim())
+        .decode(raw.trim())
         .map_err(|e| e.to_string())?;
     let mined_kp = Keypair::from_bytes(&secret).map_err(|e| e.to_string())?;
     let mined_pubkey = mined_kp.pubkey().to_bytes();
@@ -224,10 +229,10 @@ enum Tamper {
     BadSig,
 }
 
-fn cmd_claim(program: Pubkey, payer_path: &str, rpc: &str, key_b64: &str, matched: u8) {
+fn cmd_claim(program: Pubkey, payer_path: &str, rpc: &str, keyfile: &str, matched: u8) {
     let client = RpcClient::new_with_commitment(rpc.to_string(), CommitmentConfig::confirmed());
     let payer = load_keypair(payer_path);
-    match do_claim(&client, &program, &payer, key_b64, matched, Tamper::None) {
+    match do_claim(&client, &program, &payer, keyfile, matched, Tamper::None) {
         Ok(sig) => println!("CLAIM OK: {}", sig),
         Err(e) => {
             println!("CLAIM FAILED: {}", e);
@@ -236,13 +241,13 @@ fn cmd_claim(program: Pubkey, payer_path: &str, rpc: &str, key_b64: &str, matche
     }
 }
 
-fn cmd_neg(program: Pubkey, payer_path: &str, rpc: &str, key_b64: &str, matched: u8, case: &str) {
+fn cmd_neg(program: Pubkey, payer_path: &str, rpc: &str, keyfile: &str, matched: u8, case: &str) {
     let client = RpcClient::new_with_commitment(rpc.to_string(), CommitmentConfig::confirmed());
     let payer = load_keypair(payer_path);
     let (ok, label) = match case {
         // Submit the identical claim twice; the second must fail (AlreadyClaimed).
         "double" => {
-            let first = do_claim(&client, &program, &payer, key_b64, matched, Tamper::None);
+            let first = do_claim(&client, &program, &payer, keyfile, matched, Tamper::None);
             match first {
                 Ok(s) => println!("first claim (setup): {}", s),
                 Err(e) => {
@@ -251,18 +256,18 @@ fn cmd_neg(program: Pubkey, payer_path: &str, rpc: &str, key_b64: &str, matched:
                     println!("first claim failed (already claimed?): {}", e);
                 }
             }
-            let second = do_claim(&client, &program, &payer, key_b64, matched, Tamper::None);
+            let second = do_claim(&client, &program, &payer, keyfile, matched, Tamper::None);
             (second.is_err(), "double-claim rejected")
         }
         // Signature made by the wrong key: the ed25519 precompile fails.
         "badsig" => {
-            let r = do_claim(&client, &program, &payer, key_b64, matched, Tamper::BadSig);
+            let r = do_claim(&client, &program, &payer, keyfile, matched, Tamper::BadSig);
             (r.is_err(), "bad signature rejected")
         }
         // matched=5 claimed for a key that only matches 4 chars: pattern mismatch.
         // (Caller passes a 4-char key with --matched 5.)
         "mismatch" => {
-            let r = do_claim(&client, &program, &payer, key_b64, matched, Tamper::None);
+            let r = do_claim(&client, &program, &payer, keyfile, matched, Tamper::None);
             (r.is_err(), "pattern mismatch rejected")
         }
         _ => {
@@ -281,8 +286,8 @@ fn cmd_neg(program: Pubkey, payer_path: &str, rpc: &str, key_b64: &str, matched:
 fn print_usage() {
     eprintln!("usage:");
     eprintln!("  grindmine-client init --program <id> --payer <keyfile> [--rpc <url>]");
-    eprintln!("  grindmine-client claim --program <id> --payer <keyfile> --key <b64secret> --matched <n> [--rpc <url>]");
-    eprintln!("  grindmine-client neg --program <id> --payer <keyfile> --key <b64secret> --matched <n> --case double|badsig|mismatch [--rpc <url>]");
+    eprintln!("  grindmine-client claim --program <id> --payer <keyfile> --keyfile <secret-file> --matched <n> [--rpc <url>]");
+    eprintln!("  grindmine-client neg --program <id> --payer <keyfile> --keyfile <secret-file> --matched <n> --case double|badsig|mismatch [--rpc <url>]");
 }
 
 fn get_arg(args: &[String], name: &str) -> Option<String> {
@@ -305,15 +310,15 @@ fn main() {
     match cmd {
         "init" => cmd_init(program, &payer_path, &rpc),
         "claim" => {
-            let key = get_arg(&args, "--key").expect("--key");
+            let keyfile = get_arg(&args, "--keyfile").expect("--keyfile");
             let matched: u8 = get_arg(&args, "--matched").expect("--matched").parse().unwrap();
-            cmd_claim(program, &payer_path, &rpc, &key, matched);
+            cmd_claim(program, &payer_path, &rpc, &keyfile, matched);
         }
         "neg" => {
-            let key = get_arg(&args, "--key").expect("--key");
+            let keyfile = get_arg(&args, "--keyfile").expect("--keyfile");
             let matched: u8 = get_arg(&args, "--matched").expect("--matched").parse().unwrap();
             let case = get_arg(&args, "--case").expect("--case");
-            cmd_neg(program, &payer_path, &rpc, &key, matched, &case);
+            cmd_neg(program, &payer_path, &rpc, &keyfile, matched, &case);
         }
         _ => {
             print_usage();

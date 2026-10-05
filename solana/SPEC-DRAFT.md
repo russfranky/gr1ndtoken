@@ -45,7 +45,10 @@ scheme is needed.
   difficulty: `reward = base * 58^(matched_chars) / normalization`.
 - Epoch-based difficulty adjustment keeps issuance steady as miners get
   faster.
-- Hard supply cap + halving schedule.
+- Hard supply cap enforced on-chain: `Config.max_supply` + `minted_total`,
+  claims beyond the cap fail with `SupplyExhausted` (red-team C1 fix,
+  2026-10-05). Halving schedule: not implemented — the trailing-window
+  multiplier is the adjustment mechanism.
 
 ## Sybil layer (from Jev verdict, 2026-10-03)
 

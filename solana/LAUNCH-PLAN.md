@@ -117,8 +117,9 @@ honest grinders arrive is the failure mode to watch in week one.
 - Kill if: USD EV per GPU-hour stays below the top-3 competing
   opportunities for 7 consecutive days after LP seeding, OR claim
   centralization (top 5 wallets > 60% of claims) persists past week two
-  despite caps, OR a critical program bug is found (immutable program =
-  no patch path; this is the accepted cost of the trust anchor).
+  despite caps, OR a critical program bug is found (only if deployed
+  --final/immutable = no patch path; upgradeable deploys keep a patch
+  path at the cost of the trust anchor — red-team C3).
 - On kill: publish a post-mortem locally. Emission schedule ends on its
   own; no intervention needed.
 

@@ -134,6 +134,7 @@
 
   /* stat cards */
   .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .stat.wide { grid-column: span 2; }
   .stat {
     background: var(--panel);
     border: 1px solid var(--line);
@@ -387,6 +388,11 @@
         <div class="value" id="estDay">&mdash; <span class="g-demo">demo</span></div>
         <div class="sub" id="estSub">starts when you do</div>
       </div>
+      <div class="stat wide">
+        <div class="label"><span class="dot faint" id="avgDot"></span>AVG TIME TO GR1ND</div>
+        <div class="value mono" id="avgTime">&mdash; <span class="g-demo">demo</span></div>
+        <div class="sub">per 5-char hit &middot; expected at current rate</div>
+      </div>
     </div>
 
     <div class="balance" id="balanceCard">
@@ -452,6 +458,8 @@ const bestPatternEl = document.getElementById('bestPattern');
 const bestSubEl = document.getElementById('bestSub');
 const estDayEl = document.getElementById('estDay');
 const estSubEl = document.getElementById('estSub');
+const avgTimeEl = document.getElementById('avgTime');
+const avgDotEl = document.getElementById('avgDot');
 const balanceCard = document.getElementById('balanceCard');
 const balanceAmtEl = document.getElementById('balanceAmt');
 const claimableEl = document.getElementById('claimable');
@@ -661,6 +669,27 @@ setInterval(() => {
   rollCountEl.textContent = fmtInt(rolls);
 }, 90);
 
+/* ---------- avg time to gr1nd ---------- */
+// Expected rolls for a 5-char base58 prefix: 58^5. Divided by the live
+// rolls/sec rate, that is the expected wait per hit. Not exact math —
+// just the honest back-of-envelope, updating with the rate.
+const AVG_ROLLS_5CHAR = 656356768;
+function fmtAvg(sec) {
+  if (!isFinite(sec) || sec <= 0) return '&mdash;';
+  if (sec < 60) return Math.round(sec) + 's';
+  if (sec < 3600) return Math.floor(sec / 60) + 'm ' + Math.round(sec % 60) + 's';
+  if (sec < 86400) return (sec / 3600).toFixed(1) + 'h';
+  return (sec / 86400).toFixed(1) + 'd';
+}
+function renderAvgTime(rate) {
+  avgTimeEl.innerHTML = fmtAvg(AVG_ROLLS_5CHAR / rate) + ' <span class="g-demo">demo</span>';
+  avgDotEl.classList.remove('faint');
+}
+function clearAvgTime() {
+  avgTimeEl.innerHTML = '&mdash; <span class="g-demo">demo</span>';
+  avgDotEl.classList.add('faint');
+}
+
 /* ---------- start / pause / resume ---------- */
 function renderLiveStats() {
   rollsSecEl.innerHTML = RATE_LABEL[mode] + ' <span class="g-demo">demo</span>';
@@ -668,11 +697,13 @@ function renderLiveStats() {
   rollsDotEl.classList.remove('faint');
   estDayEl.innerHTML = EST_DAY[mode] + ' <small>$GRIND</small> <span class="g-demo">demo</span>';
   estSubEl.textContent = 'at current difficulty';
+  renderAvgTime(RATE[mode]);
 }
 function renderIdleStats() {
   rollsSecEl.innerHTML = '0.00 <span class="g-demo">demo</span>';
   rollsSubEl.textContent = state === 'paused' ? 'GPU · paused' : 'GPU · idle';
   rollsDotEl.classList.add('faint');
+  clearAvgTime();
 }
 startBtn.addEventListener('click', () => {
   if (state === 'grinding') {
