@@ -1,0 +1,68 @@
+[
+ {
+  "config": "D1 diffuse/9600/hl14d",
+  "sell_frac": 0.3,
+  "refine_fee": 0.0,
+  "catch": "6/10"
+ },
+ {
+  "config": "D1 diffuse/9600/hl14d",
+  "sell_frac": 0.5,
+  "refine_fee": 0.0,
+  "catch": "0/10"
+ },
+ {
+  "config": "D1 diffuse/9600/hl14d",
+  "sell_frac": 0.5,
+  "refine_fee": 0.1,
+  "catch": "0/10"
+ },
+ {
+  "config": "D1 diffuse/9600/hl14d",
+  "sell_frac": 0.7,
+  "refine_fee": 0.0,
+  "catch": "0/10"
+ },
+ {
+  "config": "D1 diffuse/9600/hl14d",
+  "sell_frac": 0.7,
+  "refine_fee": 0.1,
+  "catch": "0/10"
+ },
+ {
+  "config": "D2 mid/2400/hl30d",
+  "sell_frac": 0.3,
+  "refine_fee": 0.0,
+  "catch": "0/10"
+ },
+ {
+  "config": "D2 mid/2400/hl30d",
+  "sell_frac": 0.3,
+  "refine_fee": 0.1,
+  "catch": "4/10"
+ },
+ {
+  "config": "D2 mid/2400/hl30d",
+  "sell_frac": 0.5,
+  "refine_fee": 0.0,
+  "catch": "6/10"
+ },
+ {
+  "config": "D2 mid/2400/hl30d",
+  "sell_frac": 0.5,
+  "refine_fee": 0.1,
+  "catch": "6/10"
+ },
+ {
+  "config": "D2 mid/2400/hl30d",
+  "sell_frac": 0.7,
+  "refine_fee": 0.0,
+  "catch": "0/10"
+ },
+ {
+  "config": "D2 mid/2400/hl30d",
+  "sell_frac": 0.7,
+  "refine_fee": 0.1,
+  "catch": "1/10"
+ }
+]

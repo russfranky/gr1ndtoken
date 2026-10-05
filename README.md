@@ -51,6 +51,31 @@ https://russfranky.substack.com/p/wallet-mining-in-gaming
   self-contained, runs offline in a browser.
 - `qa/README.md`: notes on the in-progress quality loop against the POC.
 
+## Solana anonymous-launch experiment (separate track, `solana/`)
+
+A second, independent experiment: anonymous Solana launch where users grind
+vanity addresses locally and claim SPL rewards on-chain. No relation to the
+Base/EVM ticket design above beyond the shared rarity-math idea.
+
+- `solana/SPEC-DRAFT.md`: mechanism spec (local Ed25519 keygen, pattern
+  scoring, signature-proof claims, PDA duplicate registry, payout multiplier
+  on trailing claim activity, 100% mining emission).
+- `solana/LAUNCH-PLAN.md`: launch plan. Shape: deploy, manifest, grinder.
+  No liquidity required at launch.
+- `solana/SIM-RESULTS.md`: simulation results (972-run parameter sweep;
+  modeled 2,400 tokens/GPU-hour, 30-day half-life).
+- `solana/program/`: Anchor program (`grindmine-program`: Ed25519 precompile
+  verification, pattern check, PDA claim registry, SPL minting, trailing-window
+  multiplier) plus claim client, testnet runbook and status. Unit tests 5/5.
+  Testnet deployment was in progress as of 2026-10-05 (not yet completed).
+- `solana/grinder/grind.py`: reference local grinder.
+- `solana/sim/`: simulation scripts and sweep results.
+- `solana/research/`: ed25519 benchmarks, vanity-market learnings, keeper
+  vanity-hit list, token-utility and incentive notes.
+- `solana/ui/`: landing / grinder / leaderboard mockups (local HTML) with
+  renders at 390px and 1440px.
+- `solana/BRAND.md`: provisional brand notes (deferred).
+
 ## Status, honestly
 
 - The POC is a demo of the rarity mechanic. It generates real Ethereum

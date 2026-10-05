@@ -1,0 +1,182 @@
+[
+ {
+  "payout": 1200,
+  "half_life": 21,
+  "diff_target": 400.0,
+  "catches": "0/5",
+  "comp_days_mean": 15.8,
+  "final_miners_mean": 0.0,
+  "price_end_mean": 0.02,
+  "gini_mean": 0.588
+ },
+ {
+  "payout": 1200,
+  "half_life": 21,
+  "diff_target": 800.0,
+  "catches": "5/5",
+  "comp_days_mean": 26.2,
+  "final_miners_mean": 174.2,
+  "price_end_mean": 4.79,
+  "gini_mean": 0.583
+ },
+ {
+  "payout": 1200,
+  "half_life": 30,
+  "diff_target": 400.0,
+  "catches": "3/5",
+  "comp_days_mean": 21.4,
+  "final_miners_mean": 107.3,
+  "price_end_mean": 4.76,
+  "gini_mean": 0.588
+ },
+ {
+  "payout": 1200,
+  "half_life": 30,
+  "diff_target": 800.0,
+  "catches": "5/5",
+  "comp_days_mean": 26.4,
+  "final_miners_mean": 183.3,
+  "price_end_mean": 5.01,
+  "gini_mean": 0.582
+ },
+ {
+  "payout": 1200,
+  "half_life": 45,
+  "diff_target": 400.0,
+  "catches": "1/5",
+  "comp_days_mean": 17.2,
+  "final_miners_mean": 39.8,
+  "price_end_mean": 2.19,
+  "gini_mean": 0.586
+ },
+ {
+  "payout": 1200,
+  "half_life": 45,
+  "diff_target": 800.0,
+  "catches": "5/5",
+  "comp_days_mean": 26.8,
+  "final_miners_mean": 195.2,
+  "price_end_mean": 4.4,
+  "gini_mean": 0.583
+ },
+ {
+  "payout": 2400,
+  "half_life": 21,
+  "diff_target": 400.0,
+  "catches": "4/5",
+  "comp_days_mean": 24.0,
+  "final_miners_mean": 150.4,
+  "price_end_mean": 4.94,
+  "gini_mean": 0.582
+ },
+ {
+  "payout": 2400,
+  "half_life": 21,
+  "diff_target": 800.0,
+  "catches": "5/5",
+  "comp_days_mean": 25.8,
+  "final_miners_mean": 193.8,
+  "price_end_mean": 3.13,
+  "gini_mean": 0.583
+ },
+ {
+  "payout": 2400,
+  "half_life": 30,
+  "diff_target": 400.0,
+  "catches": "4/5",
+  "comp_days_mean": 24.2,
+  "final_miners_mean": 152.9,
+  "price_end_mean": 3.74,
+  "gini_mean": 0.583
+ },
+ {
+  "payout": 2400,
+  "half_life": 30,
+  "diff_target": 800.0,
+  "catches": "5/5",
+  "comp_days_mean": 26.6,
+  "final_miners_mean": 191.2,
+  "price_end_mean": 2.34,
+  "gini_mean": 0.583
+ },
+ {
+  "payout": 2400,
+  "half_life": 45,
+  "diff_target": 400.0,
+  "catches": "5/5",
+  "comp_days_mean": 26.4,
+  "final_miners_mean": 194.3,
+  "price_end_mean": 4.3,
+  "gini_mean": 0.582
+ },
+ {
+  "payout": 2400,
+  "half_life": 45,
+  "diff_target": 800.0,
+  "catches": "5/5",
+  "comp_days_mean": 26.8,
+  "final_miners_mean": 196.4,
+  "price_end_mean": 2.12,
+  "gini_mean": 0.583
+ },
+ {
+  "payout": 4800,
+  "half_life": 21,
+  "diff_target": 400.0,
+  "catches": "0/5",
+  "comp_days_mean": 5.0,
+  "final_miners_mean": 0.3,
+  "price_end_mean": 0.05,
+  "gini_mean": 0.71
+ },
+ {
+  "payout": 4800,
+  "half_life": 21,
+  "diff_target": 800.0,
+  "catches": "0/5",
+  "comp_days_mean": 8.4,
+  "final_miners_mean": 13.5,
+  "price_end_mean": 0.08,
+  "gini_mean": 0.693
+ },
+ {
+  "payout": 4800,
+  "half_life": 30,
+  "diff_target": 400.0,
+  "catches": "0/5",
+  "comp_days_mean": 5.8,
+  "final_miners_mean": 0.6,
+  "price_end_mean": 0.05,
+  "gini_mean": 0.713
+ },
+ {
+  "payout": 4800,
+  "half_life": 30,
+  "diff_target": 800.0,
+  "catches": "1/5",
+  "comp_days_mean": 13.8,
+  "final_miners_mean": 69.1,
+  "price_end_mean": 0.37,
+  "gini_mean": 0.684
+ },
+ {
+  "payout": 4800,
+  "half_life": 45,
+  "diff_target": 400.0,
+  "catches": "1/5",
+  "comp_days_mean": 7.4,
+  "final_miners_mean": 42.1,
+  "price_end_mean": 0.28,
+  "gini_mean": 0.721
+ },
+ {
+  "payout": 4800,
+  "half_life": 45,
+  "diff_target": 800.0,
+  "catches": "2/5",
+  "comp_days_mean": 16.8,
+  "final_miners_mean": 101.8,
+  "price_end_mean": 0.38,
+  "gini_mean": 0.677
+ }
+]

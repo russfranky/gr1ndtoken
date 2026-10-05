@@ -1,0 +1,17 @@
+[package]
+name = "grindmine-client"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "grindmine-client"
+path = "src/main.rs"
+
+[dependencies]
+grindmine-program = { path = "../grindmine-program" }
+solana-client = "2"
+solana-sdk = "2"
+spl-token = "8"
+borsh = "1"
+base64 = "0.22"
+serde_json = "1"

@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>grindtokens — grinder</title>
+<style>
+  :root {
+    --ease: cubic-bezier(0.23, 1, 0.32, 1);
+    --bg: #0d0d10;
+    --panel: #141417;
+    --panel-2: #1a1a1e;
+    --line: rgba(255,255,255,0.08);
+    --text: #f2f2f0;
+    --dim: #8a8a90;
+    --faint: #84848c;
+    --accent: #7ee787;
+    --accent-dim: rgba(126,231,135,0.12);
+    --gold: #e8b93e;
+    --radius: 20px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "SF Pro Text", "Segoe UI", sans-serif;
+    display: flex;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  [hidden] { display: none !important; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .g-demo {
+    font-size: 11px; font-weight: 700; opacity: .55;
+    border: 1px solid rgba(255,255,255,.25); border-radius: 4px;
+    padding: 3px 6px; letter-spacing: .06em; white-space: nowrap;
+  }
+
+  /* ---------- left rail ---------- */
+  .rail {
+    width: 76px;
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 0;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .rail .mark {
+    width: 44px; height: 44px;
+    border-radius: 14px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; font-size: 20px;
+    margin-bottom: 16px;
+  }
+  .rail .live-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    margin-top: auto; margin-bottom: 8px;
+  }
+
+  /* ---------- main ---------- */
+  .main { flex: 1; display: flex; min-width: 0; }
+
+  .side {
+    width: 400px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  /* start pill */
+  .start-row { display: flex; gap: 10px; }
+  .start-btn {
+    flex: 1;
+    height: 64px;
+    border-radius: 999px;
+    border: none;
+    background: var(--text);
+    color: #0d0d10;
+    font-size: 17px;
+    font-weight: 700;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    transition: transform .1s var(--ease), background-color .2s var(--ease);
+  }
+  .start-btn:active { transform: scale(.98); }
+  .start-btn .play {
+    width: 30px; height: 30px; border-radius: 50%;
+    background: #0d0d10; color: var(--text);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .start-btn .play .tri {
+    width: 0; height: 0;
+    border-left: 10px solid currentColor;
+    border-top: 7px solid transparent;
+    border-bottom: 7px solid transparent;
+    margin-left: 3px;
+  }
+  .start-btn .play .bars { display: none; gap: 4px; }
+  .start-btn .play .bars i { width: 4px; height: 12px; background: currentColor; border-radius: 2px; }
+  .start-btn.mining .play .tri { display: none; }
+  .start-btn.mining .play .bars { display: flex; }
+  .start-btn.mining { background: var(--accent); }
+  .mode-seg {
+    display: flex;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px;
+    gap: 2px;
+  }
+  .mode-seg button {
+    border: none; background: transparent;
+    color: var(--dim);
+    font-size: 13px; font-weight: 600;
+    padding: 0 16px; height: 54px;
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color .15s ease-out, color .15s ease-out;
+  }
+  .mode-seg button.active { background: var(--panel-2); color: var(--text); }
+
+  /* stat cards */
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    min-width: 0;
+  }
+  .stat .label {
+    font-size: 11px; letter-spacing: .1em; color: var(--dim); font-weight: 700;
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 8px;
+    overflow-wrap: anywhere;
+  }
+  .stat .label .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+  .stat .label .dot.faint { background: var(--faint); box-shadow: none; }
+  .stat .value {
+    font-size: clamp(24px, 2.4vw, 32px); font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+    overflow-wrap: anywhere;
+  }
+  .stat .value.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
+  .stat .value small { font-size: 13px; color: var(--dim); font-weight: 600; }
+  .stat .sub { font-size: 12px; color: var(--faint); margin-top: 4px; }
+
+  /* balance card */
+  .balance {
+    background: linear-gradient(135deg, #1c1c14, #141410);
+    border: 1px solid rgba(232,185,62,0.18);
+    border-radius: var(--radius);
+    padding: 20px;
+    transition: border-color .22s var(--ease), box-shadow .22s var(--ease);
+  }
+  .balance.pulse {
+    border-color: rgba(232,185,62,.75);
+    box-shadow: 0 0 28px rgba(232,185,62,.3);
+  }
+  .balance .row { display: flex; justify-content: space-between; align-items: center; }
+  .balance .brand { font-size: 13px; font-weight: 700; color: var(--dim); display: flex; gap: 8px; align-items: center; }
+  .balance .amount {
+    font-size: clamp(24px, 4vw, 38px); font-weight: 800; letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+    margin: 10px 0 2px;
+  }
+  .balance .amount small { font-size: 13px; color: var(--dim); font-weight: 700; }
+  .balance .avail { font-size: 13px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .pill-btn {
+    border: 1px solid var(--line);
+    background: var(--panel-2);
+    color: var(--text);
+    border-radius: 999px;
+    padding: 13px 24px;
+    min-height: 44px;
+    font-size: 13px; font-weight: 600;
+    cursor: pointer;
+  }
+  .pill-btn:not(:disabled):hover { border-color: rgba(255,255,255,0.2); }
+  .pill-btn:disabled { opacity: .45; cursor: not-allowed; }
+  .pill-btn.claimed { background: var(--accent); color: #0d0d10; border-color: transparent; }
+
+  /* activity */
+  .section-title {
+    font-size: 13px; font-weight: 700; color: var(--dim);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .feed { display: flex; flex-direction: column; gap: 8px; }
+  .feed-item {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 12px 16px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .feed-item > div:first-child { min-width: 0; }
+  .feed-item .what { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+  .feed-item .when { font-size: 12px; color: var(--faint); margin-top: 2px; }
+  .feed-item .gain { font-size: 15px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+  .feed-item .gain small { color: var(--dim); font-weight: 600; font-size: 12px; }
+  .feed-empty {
+    border: 1px dashed var(--line);
+    border-radius: 16px;
+    padding: 18px 16px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .feed-empty > div:first-child { min-width: 0; }
+  .feed-empty .no { font-size: 14px; font-weight: 600; color: var(--dim); }
+  .feed-empty .sub2 { font-size: 12px; color: var(--faint); margin-top: 2px; }
+  .feed-empty .gain { font-size: 15px; font-weight: 700; color: var(--faint); flex-shrink: 0; }
+
+  /* ---------- visual stage ---------- */
+  .stage {
+    flex: 1;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .hero {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 16px;
+    padding: 0 32px;
+    text-align: center;
+  }
+  .hero-addr {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 20px;
+    letter-spacing: 0.04em;
+    color: rgba(255,255,255,0.55);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    max-width: 100%;
+    line-height: 1.7;
+    transition: color .2s;
+  }
+  .hero-addr .gold { color: var(--gold); text-shadow: 0 0 24px rgba(232,185,62,0.5); font-weight: 700; }
+  .hero-addr.locked { color: rgba(255,255,255,0.92); }
+  .hero-addr.paused-dim { color: rgba(255,255,255,.45); }
+  .hero-hint {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px; letter-spacing: .04em;
+    color: var(--faint);
+  }
+  .hero-meta {
+    font-size: 14px; color: var(--faint);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.06em;
+  }
+  .hero-meta b { color: var(--dim); font-weight: 700; }
+  .hero-hit {
+    min-height: 32px;
+    font-size: 26px; font-weight: 800; color: var(--gold);
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    opacity: 0; transform: translateY(6px);
+    transition: opacity .25s var(--ease), transform .25s var(--ease);
+  }
+  .hero-hit.show { opacity: 1; transform: none; }
+  .stage-top {
+    position: relative; z-index: 2;
+    display: flex; justify-content: flex-end;
+    padding: 24px 24px 0;
+  }
+  .net-pill {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(20,20,23,0.85);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 10px 18px;
+    font-size: 14px; font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    backdrop-filter: blur(8px);
+  }
+  .net-pill .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+  .stage-bottom {
+    position: relative; z-index: 2;
+    margin-top: auto;
+    padding: 0 24px 24px;
+    display: flex; justify-content: center;
+  }
+  .hit-pill {
+    display: flex; align-items: center; gap: 16px;
+    background: rgba(24,22,14,0.92);
+    border: 1px solid rgba(232,185,62,0.35);
+    border-radius: 999px;
+    padding: 12px 12px 12px 24px;
+    backdrop-filter: blur(8px);
+    max-width: 100%;
+    opacity: 0; transform: translateY(8px);
+    transition: opacity .2s var(--ease), transform .2s var(--ease);
+  }
+  .hit-pill.hidden { display: none; }
+  .hit-pill.show { opacity: 1; transform: none; }
+  .hit-pill.exit { opacity: 0; transform: translateY(8px); }
+  .hit-pill .t { font-size: 14px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+  .hit-pill .t b { color: var(--gold); }
+  .hit-pill .pill-claim {
+    background: var(--gold); color: #141410;
+    font-weight: 800; font-size: 14px; font-family: inherit;
+    border: none; border-radius: 999px; padding: 12px 20px;
+    min-height: 44px;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .hit-pill .pill-claim.claimed { background: var(--accent); color: #141410; }
+  .hit-pill .amt {
+    background: rgba(232,185,62,0.15); color: var(--gold);
+    font-weight: 700; font-size: 14px;
+    border-radius: 999px; padding: 8px 16px;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+  }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 900px) {
+    body { overflow: auto; }
+    .rail { display: none; }
+    .main { flex-direction: column; }
+    .side { width: 100%; flex-shrink: 1; order: 2; overflow: visible; }
+    .stage { order: 1; min-height: 340px; }
+    .hero { position: static; padding: 48px 20px 24px; }
+    .hero-addr { font-size: 13px; white-space: normal; overflow-wrap: anywhere; max-width: 100%; }
+    .stage-top { padding: 16px 16px 0; }
+    .stage-bottom { padding: 0 16px 16px; }
+    .hit-pill { flex-wrap: wrap; justify-content: center; border-radius: 20px; max-width: 100%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-hit, .hit-pill { animation: none; transition: none; }
+    .balance { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="rail">
+  <div class="mark">◈</div>
+  <div class="live-dot"></div>
+</div>
+
+<div class="main">
+  <aside class="side">
+    <div class="start-row">
+      <button class="start-btn" id="startBtn"><span class="play"><span class="tri"></span><span class="bars"><i></i><i></i></span></span> <span id="startLabel">Start</span></button>
+      <div class="mode-seg" id="modeSeg">
+        <button class="active" data-mode="eco">Eco</button>
+        <button data-mode="max">Max</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <div class="label"><span class="dot faint" id="rollsDot"></span>ROLLS / SEC</div>
+        <div class="value" id="rollsSec">0.00 <span class="g-demo">demo</span></div>
+        <div class="sub" id="rollsSub">GPU &middot; idle</div>
+      </div>
+      <div class="stat">
+        <div class="label"><span class="dot faint"></span>HITS</div>
+        <div class="value" id="hits">0 <span class="g-demo">demo</span></div>
+        <div class="sub">this session</div>
+      </div>
+      <div class="stat">
+        <div class="label"><span class="dot faint"></span>BEST PATTERN</div>
+        <div class="value mono" id="bestPattern">&mdash;</div>
+        <div class="sub" id="bestSub">none yet</div>
+      </div>
+      <div class="stat">
+        <div class="label"><span class="dot faint"></span>EST / DAY</div>
+        <div class="value" id="estDay">&mdash; <span class="g-demo">demo</span></div>
+        <div class="sub" id="estSub">starts when you do</div>
+      </div>
+    </div>
+
+    <div class="balance" id="balanceCard">
+      <div class="row">
+        <div class="brand">◈ grindtokens</div>
+        <button class="pill-btn" id="claimBtn" disabled>Claim</button>
+      </div>
+      <div class="amount" id="balanceAmt">0.00 <small>$GRIND</small> <span class="g-demo">demo</span></div>
+      <div class="avail" id="claimable">Claimable: 0.00 $GRIND <span class="g-demo">demo</span></div>
+    </div>
+
+    <div class="section-title"><span>Recent hits</span></div>
+    <div class="feed" id="feed"></div>
+  </aside>
+
+  <section class="stage">
+    <div class="hero">
+      <div class="hero-addr" id="heroAddr"></div>
+      <div class="hero-hint" id="heroHint">press start &mdash; the roll begins here</div>
+      <div class="hero-meta"><b id="rollCount">0</b> rolls this session</div>
+      <div class="hero-hit" id="heroHit"></div>
+    </div>
+    <div class="stage-top">
+      <div class="net-pill"><span class="dot"></span><span id="netCount">48,211</span>grinders online <span class="g-demo">demo</span></div>
+    </div>
+    <div class="stage-bottom">
+      <div class="hit-pill hidden" id="hitPill">
+        <div class="t" id="hitPillT"></div>
+        <div class="amt" id="hitPillAmt"></div>
+        <button class="pill-claim" id="pillClaim">Claim</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+"use strict";
+const GLYPHS = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const PATTERNS = [
+  { p: 'Gr1nd', n: 5, amt: 240 },
+  { p: 'GR1D', n: 4, amt: 18 },
+  { p: 'grnd', n: 4, amt: 18 },
+];
+const RATE = { eco: 4820000, max: 9640000 };
+const RATE_LABEL = { eco: '4.82<small>M</small>', max: '9.64<small>M</small>' };
+const RATE_SUB = { eco: 'GPU · 98% util', max: 'GPU · 100% util' };
+const EST_DAY = { eco: 312, max: 624 };
+
+// element refs
+const heroAddr = document.getElementById('heroAddr');
+const heroHint = document.getElementById('heroHint');
+const heroHit = document.getElementById('heroHit');
+const rollCountEl = document.getElementById('rollCount');
+const startBtn = document.getElementById('startBtn');
+const startLabel = document.getElementById('startLabel');
+const modeSeg = document.getElementById('modeSeg');
+const rollsSecEl = document.getElementById('rollsSec');
+const rollsSubEl = document.getElementById('rollsSub');
+const rollsDotEl = document.getElementById('rollsDot');
+const hitsEl = document.getElementById('hits');
+const bestPatternEl = document.getElementById('bestPattern');
+const bestSubEl = document.getElementById('bestSub');
+const estDayEl = document.getElementById('estDay');
+const estSubEl = document.getElementById('estSub');
+const balanceCard = document.getElementById('balanceCard');
+const balanceAmtEl = document.getElementById('balanceAmt');
+const claimableEl = document.getElementById('claimable');
+const claimBtn = document.getElementById('claimBtn');
+const feedEl = document.getElementById('feed');
+const netCountEl = document.getElementById('netCount');
+const hitPillEl = document.getElementById('hitPill');
+const hitPillT = document.getElementById('hitPillT');
+const hitPillAmt = document.getElementById('hitPillAmt');
+const pillClaimEl = document.getElementById('pillClaim');
+
+// state
+let state = 'idle';       // idle | grinding | paused
+let everStarted = false;
+let mode = 'eco';
+let rolls = 0, hits = 0, net = 48211;
+let balance = 0, claimable = 0;
+let best = null;          // { p, n }
+let feed = [];            // { p, last4, n, amt, t }
+let openHit = null;       // { amt } — pending quick-claim on the hit pill; the amount is already safe in claimable
+let frozen = false;
+let hitTimeoutId = 0;
+let pillSeq = 0;
+
+function randStr(n) {
+  let s = '';
+  for (let i = 0; i < n; i++) s += GLYPHS[(Math.random() * GLYPHS.length) | 0];
+  return s;
+}
+function fmtInt(n) { return Math.round(n).toLocaleString('en-US'); }
+function fmtMoney(n) { return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function fmtOdds(v) {
+  if (v >= 1e9) return (v / 1e9).toFixed(1) + 'B';
+  if (v >= 1e6) return Math.round(v / 1e6) + 'M';
+  return fmtInt(v);
+}
+
+/* ---------- feed ---------- */
+function renderFeed() {
+  if (!feed.length) {
+    feedEl.innerHTML =
+      '<div class="feed-empty"><div><div class="no">No hits yet</div>' +
+      '<div class="sub2">Press Start and your hits land here</div></div>' +
+      '<div class="gain">&mdash;</div></div>';
+    return;
+  }
+  feedEl.innerHTML = feed.map(f => {
+    const ago = Date.now() - f.t < 60000 ? 'just now' : Math.floor((Date.now() - f.t) / 60000) + ' min ago';
+    return '<div class="feed-item"><div><div class="what mono">' + f.p + '…' + f.last4 + '</div>' +
+      '<div class="when">' + ago + ' · ' + f.n + '-char prefix</div></div>' +
+      '<div class="gain">+' + f.amt + ' <small>$GRIND</small> <span class="g-demo">demo</span></div></div>';
+  }).join('');
+}
+function prependFeedItem(h, rest) {
+  feed.unshift({ p: h.p, last4: rest.slice(-4), n: h.n, amt: h.amt, t: Date.now() });
+  if (feed.length > 5) feed.pop();
+  renderFeed();
+}
+
+/* ---------- claimable / balance ---------- */
+function tweenNumber(el, from, to, fmt, dur, onDone) {
+  const t0 = performance.now();
+  function frame(t) {
+    const k = Math.min(1, Math.max(0, (t - t0) / dur));
+    const e = 1 - Math.pow(1 - k, 3);
+    el.innerHTML = fmt(from + (to - from) * e);
+    if (k < 1) requestAnimationFrame(frame);
+    else { el.innerHTML = fmt(to); if (onDone) onDone(); }
+  }
+  requestAnimationFrame(frame);
+}
+function updateClaimable() {
+  claimableEl.innerHTML = 'Claimable: ' + fmtMoney(claimable) + ' $GRIND <span class="g-demo">demo</span>';
+  claimBtn.disabled = claimable <= 0;
+}
+function countClaimable(from, to) {
+  tweenNumber(claimableEl, from, to, v => 'Claimable: ' + fmtMoney(v) + ' $GRIND <span class="g-demo">demo</span>', 400, updateClaimable);
+  setTimeout(updateClaimable, 450); // backstop: sync final text + button state if rAF is starved
+}
+function countBalance(from, to) {
+  tweenNumber(balanceAmtEl, from, to, v => fmtMoney(v) + ' <small>$GRIND</small> <span class="g-demo">demo</span>', 400);
+  setTimeout(() => { balanceAmtEl.innerHTML = fmtMoney(balance) + ' <small>$GRIND</small> <span class="g-demo">demo</span>'; }, 450);
+}
+function pulseBalance() {
+  balanceCard.classList.add('pulse');
+  setTimeout(() => balanceCard.classList.remove('pulse'), 220);
+}
+
+/* ---------- hit pill ---------- */
+function showHitPill() {
+  pillSeq++;
+  hitPillEl.classList.remove('hidden', 'exit');
+  void hitPillEl.offsetWidth;
+  hitPillEl.classList.add('show');
+}
+function exitHitPill() {
+  const s = ++pillSeq;
+  hitPillEl.classList.remove('show');
+  if (hitPillEl.classList.contains('hidden')) {
+    pillClaimEl.classList.remove('claimed');
+    pillClaimEl.textContent = 'Claim';
+    return;
+  }
+  hitPillEl.classList.add('exit');
+  setTimeout(() => {
+    if (s !== pillSeq) return;
+    hitPillEl.classList.add('hidden');
+    hitPillEl.classList.remove('exit');
+    pillClaimEl.classList.remove('claimed');
+    pillClaimEl.textContent = 'Claim';
+  }, 200);
+}
+
+/* ---------- hits ---------- */
+function landHit() {
+  if (frozen) return;
+  if (state !== 'grinding') return;
+  frozen = true;
+  // no forfeit: a pending hit's amount is already safe in claimable; a new hit just swaps the pill
+
+  const h = PATTERNS[(Math.random() * PATTERNS.length) | 0];
+  const rest = randStr(44 - h.n);
+  heroAddr.classList.add('locked');
+  heroAddr.innerHTML = '<span class="gold">' + h.p + '</span>' + rest;
+  heroHit.innerHTML = '+' + h.amt + ' $GRIND <span class="g-demo">demo</span>';
+  heroHit.classList.add('show');
+
+  hitPillT.innerHTML = '<b>HIT</b> · <span class="mono">' + h.p + '…' + rest.slice(-4) + '</span> · ' + h.n + '-char prefix';
+  hitPillAmt.innerHTML = '+' + h.amt + ' <small>$GRIND</small> <span class="g-demo">demo</span>';
+  pillClaimEl.classList.remove('claimed');
+  pillClaimEl.textContent = 'Claim';
+  showHitPill();
+
+  openHit = { amt: h.amt };
+  const cf = claimable;
+  claimable += h.amt;
+  countClaimable(cf, claimable);
+
+  prependFeedItem(h, rest);
+  hits++;
+  hitsEl.innerHTML = fmtInt(hits) + ' <span class="g-demo">demo</span>';
+  if (!best || h.n > best.n) {
+    best = { p: h.p, n: h.n };
+    bestPatternEl.textContent = h.p + '…';
+    bestSubEl.textContent = h.n + '-char prefix · 1 in ' + fmtOdds(Math.pow(58, h.n));
+  }
+
+  setTimeout(() => {
+    frozen = false;
+    heroAddr.classList.remove('locked');
+    heroHit.classList.remove('show');
+    setTimeout(() => { heroHit.textContent = ''; }, 260);
+    if (state === 'grinding') scheduleHit();
+  }, 2600);
+}
+function scheduleHit() {
+  clearTimeout(hitTimeoutId);
+  let lo, hi;
+  if (mode === 'max') { lo = 1750; hi = 3500; } else { lo = 3500; hi = 7000; }
+  if (REDUCED) { lo = Math.max(lo, 7000); hi = Math.max(hi, 12000); }
+  hitTimeoutId = setTimeout(() => { if (state === 'grinding') landHit(); }, lo + Math.random() * (hi - lo));
+}
+
+/* ---------- claim: hit pill (quick-claim; no expiry, no forfeit) ---------- */
+pillClaimEl.addEventListener('click', () => {
+  if (!openHit) return;
+  const amt = openHit.amt;
+  openHit = null;
+  pillClaimEl.textContent = 'Claimed';
+  pillClaimEl.classList.add('claimed');
+  const cf = claimable, bf = balance;
+  claimable -= amt;
+  balance += amt;
+  countClaimable(cf, claimable);
+  countBalance(bf, balance);
+  pulseBalance();
+  setTimeout(() => { exitHitPill(); }, 1200);
+});
+
+/* ---------- claim: balance button ---------- */
+claimBtn.addEventListener('click', () => {
+  if (claimBtn.disabled || claimable <= 0) return;
+  const amt = claimable;
+  const bf = balance;
+  claimable = 0;
+  balance += amt;
+  updateClaimable();
+  countBalance(bf, balance);
+  claimBtn.textContent = 'Claimed';
+  claimBtn.classList.add('claimed');
+  pulseBalance();
+  openHit = null; // any pending quick-claim is consumed into the claim
+  pillClaimEl.classList.remove('claimed');
+  pillClaimEl.textContent = 'Claim';
+  exitHitPill();
+  setTimeout(() => {
+    claimBtn.textContent = 'Claim';
+    claimBtn.classList.remove('claimed');
+  }, 1200);
+});
+
+/* ---------- churn ---------- */
+setInterval(() => {
+  if (state !== 'grinding' || frozen || REDUCED) return;
+  rolls += Math.floor(RATE[mode] * 0.09 * (0.9 + Math.random() * 0.2));
+  if (!REDUCED) heroAddr.textContent = randStr(44);
+  rollCountEl.textContent = fmtInt(rolls);
+}, 90);
+
+/* ---------- start / pause / resume ---------- */
+function renderLiveStats() {
+  rollsSecEl.innerHTML = RATE_LABEL[mode] + ' <span class="g-demo">demo</span>';
+  rollsSubEl.textContent = RATE_SUB[mode];
+  rollsDotEl.classList.remove('faint');
+  estDayEl.innerHTML = EST_DAY[mode] + ' <small>$GRIND</small> <span class="g-demo">demo</span>';
+  estSubEl.textContent = 'at current difficulty';
+}
+function renderIdleStats() {
+  rollsSecEl.innerHTML = '0.00 <span class="g-demo">demo</span>';
+  rollsSubEl.textContent = state === 'paused' ? 'GPU · paused' : 'GPU · idle';
+  rollsDotEl.classList.add('faint');
+}
+startBtn.addEventListener('click', () => {
+  if (state === 'grinding') {
+    // pause
+    state = 'paused';
+    clearTimeout(hitTimeoutId);
+    startBtn.classList.remove('mining');
+    startLabel.textContent = 'Resume';
+    heroAddr.classList.add('paused-dim');
+    renderIdleStats();
+  } else {
+    // start or resume
+    state = 'grinding';
+    everStarted = true;
+    startBtn.classList.add('mining');
+    startLabel.textContent = 'Grinding';
+    heroHint.hidden = true;
+    heroAddr.classList.remove('paused-dim');
+    renderLiveStats();
+    scheduleHit();
+  }
+});
+
+/* ---------- eco / max ---------- */
+modeSeg.addEventListener('click', (e) => {
+  const btn = e.target.closest('button');
+  if (!btn) return;
+  modeSeg.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  mode = btn.dataset.mode;
+  if (state === 'grinding') {
+    renderLiveStats();
+    scheduleHit(); // cadence roughly doubles on max
+  }
+  // idle/paused: pill moves, numbers stay as they were; mode applies on Start
+});
+
+/* ---------- net pill drift ---------- */
+setInterval(() => {
+  net += Math.floor((Math.random() - 0.45) * 14);
+  netCountEl.textContent = fmtInt(net);
+}, 1500);
+
+/* ---------- boot ---------- */
+heroAddr.textContent = randStr(44);
+renderIdleStats();
+renderFeed();
+</script>
+</body>
+</html>

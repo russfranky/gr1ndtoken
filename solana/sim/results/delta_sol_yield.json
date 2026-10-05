@@ -1,0 +1,92 @@
+[
+ {
+  "yield_sol": 0,
+  "E": 2,
+  "catches": "0/5",
+  "comp_days_mean": 7.8,
+  "final_miners_mean": 0.0,
+  "price_end_mean": 0.02,
+  "mean_sell": 0.42,
+  "mean_sol_apy": 0.0
+ },
+ {
+  "yield_sol": 0,
+  "E": 5,
+  "catches": "4/5",
+  "comp_days_mean": 24.4,
+  "final_miners_mean": 157.4,
+  "price_end_mean": 10.16,
+  "mean_sell": 0.162,
+  "mean_sol_apy": 0.0
+ },
+ {
+  "yield_sol": 0,
+  "E": 10,
+  "catches": "4/5",
+  "comp_days_mean": 24.8,
+  "final_miners_mean": 160.0,
+  "price_end_mean": 18.58,
+  "mean_sell": 0.13,
+  "mean_sol_apy": 0.0
+ },
+ {
+  "yield_sol": 5,
+  "E": 2,
+  "catches": "0/5",
+  "comp_days_mean": 7.8,
+  "final_miners_mean": 0.0,
+  "price_end_mean": 0.02,
+  "mean_sell": 0.067,
+  "mean_sol_apy": 106.85
+ },
+ {
+  "yield_sol": 5,
+  "E": 5,
+  "catches": "4/5",
+  "comp_days_mean": 24.6,
+  "final_miners_mean": 157.5,
+  "price_end_mean": 10.06,
+  "mean_sell": 0.088,
+  "mean_sol_apy": 98.31
+ },
+ {
+  "yield_sol": 5,
+  "E": 10,
+  "catches": "4/5",
+  "comp_days_mean": 24.8,
+  "final_miners_mean": 160.0,
+  "price_end_mean": 18.22,
+  "mean_sell": 0.057,
+  "mean_sol_apy": 98.32
+ },
+ {
+  "yield_sol": 10,
+  "E": 2,
+  "catches": "1/5",
+  "comp_days_mean": 14.0,
+  "final_miners_mean": 41.3,
+  "price_end_mean": 1.89,
+  "mean_sell": 0.145,
+  "mean_sol_apy": 211.78
+ },
+ {
+  "yield_sol": 10,
+  "E": 5,
+  "catches": "4/5",
+  "comp_days_mean": 24.8,
+  "final_miners_mean": 157.5,
+  "price_end_mean": 10.15,
+  "mean_sell": 0.088,
+  "mean_sol_apy": 198.26
+ },
+ {
+  "yield_sol": 10,
+  "E": 10,
+  "catches": "5/5",
+  "comp_days_mean": 29.0,
+  "final_miners_mean": 198.2,
+  "price_end_mean": 19.79,
+  "mean_sell": 0.077,
+  "mean_sol_apy": 197.58
+ }
+]

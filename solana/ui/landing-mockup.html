@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>grindtokens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet"></noscript>
+<style>
+  :root {
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --gold: #e8b93e;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --m-bg: #0d0d10; --m-panel: #141417; --m-panel2: #1a1a1e;
+    --m-line: rgba(255,255,255,.08);
+    --m-text: #f2f2f0; --m-dim: #8a8a90; --m-faint: #84848c;
+    --m-green: #7ee787; --m-gold: #e8b93e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    background: var(--m-bg); color: var(--m-text);
+    font-family: "Inter", -apple-system, sans-serif;
+    display: flex; flex-direction: column; min-height: 100svh;
+  }
+  @keyframes v-in {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: none; }
+  }
+  .v-enter { animation: v-in 280ms var(--ease-out) both; animation-delay: var(--d, 0ms); }
+  .gold { color: var(--gold); }
+  :focus-visible { outline: 2px solid var(--m-green); outline-offset: 3px; }
+
+  .m-top {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 24px clamp(18px, 4vw, 40px);
+    position: relative; z-index: 2;
+  }
+  .m-wordmark { font-weight: 800; font-size: 18px; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
+  .m-mark { width: 14px; height: 14px; border-radius: 3px; background: var(--m-green); box-shadow: 0 0 12px rgba(126,231,135,.7); }
+  .m-live {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(20,20,23,.85); border: 1px solid var(--m-line);
+    border-radius: 999px; padding: 12px 20px;
+    font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    white-space: nowrap; flex-shrink: 0;
+  }
+  @media (max-width: 480px) {
+    .m-live { padding: 8px 14px; font-size: 12px; gap: 6px; }
+    .m-top { padding: 16px clamp(14px, 4vw, 40px); }
+  }
+  @media (max-width: 380px) {
+    .m-live { font-size: 11px; padding: 8px 12px; gap: 6px; }
+    .m-live .m-demo { display: none; }
+  }
+  .m-live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--m-green); box-shadow: 0 0 10px var(--m-green); }
+  .m-demo {
+    font-size: 11px; font-weight: 700; opacity: .55;
+    border: 1px solid rgba(255,255,255,.25); border-radius: 4px;
+    padding: 3px 6px; letter-spacing: .06em;
+  }
+  .m-cta {
+    display: inline-block; text-decoration: none;
+    border: none; border-radius: 999px;
+    font-size: 19px; font-weight: 700;
+    padding: 20px 56px; cursor: pointer;
+    transition: transform 150ms var(--ease-out), background-color 150ms var(--ease-out);
+  }
+  .m-cta:active { transform: scale(.97); }
+  /* (no :focus-visible override: the base green ring stays visible on the dark bg) */
+  .m-fine { font-size: 13px; color: var(--m-faint); font-weight: 600; }
+
+  .k-body {
+    flex: 1; display: grid; grid-template-columns: 1.05fr .95fr;
+    gap: clamp(24px, 4vw, 56px); align-items: center;
+    max-width: 1240px; width: 100%; margin: 0 auto;
+    padding: 16px clamp(18px, 4vw, 40px) 48px;
+    position: relative; z-index: 1;
+  }
+  .k-h1 {
+    font-family: "Anton", "Arial Narrow", sans-serif;
+    font-size: clamp(54px, 4.7vw, 68px);
+    line-height: .95; letter-spacing: .005em; text-transform: uppercase;
+  }
+  .k-h1 .ln { display: block; white-space: nowrap; }
+  .k-sub { margin-top: 24px; font-size: clamp(16px, 1.8vw, 20px); color: var(--m-dim); font-weight: 600; max-width: 440px; line-height: 1.55; }
+  .k-cta-row { margin-top: 32px; }
+  .k-cta { background: var(--m-text); color: #0d0d10; }
+  .k-cta:hover { background: #ffffff; box-shadow: 0 8px 28px rgba(242,242,240,.18); }
+  .k-fine { margin-top: 16px; }
+  .k-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .k-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .k-stat { background: var(--m-panel); border: 1px solid var(--m-line); border-radius: 20px; padding: 16px; }
+  .k-stat .label { font-size: 11px; letter-spacing: .1em; color: var(--m-dim); font-weight: 700; display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .k-stat .label .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--m-green); }
+  .k-stat .value { font-size: clamp(24px, 2.4vw, 32px); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .k-stat .value small { font-size: 13px; color: var(--m-dim); font-weight: 600; }
+  .k-stat .sub { font-size: 12px; color: var(--m-faint); margin-top: 4px; }
+  .k-roll { background: var(--m-panel); border: 1px solid var(--m-line); border-radius: 20px; padding: 16px 20px; }
+  .k-roll .label { font-family: var(--mono); font-size: 11px; letter-spacing: .14em; color: var(--m-faint); margin-bottom: 10px; text-transform: uppercase; }
+  .k-addr { font-family: var(--mono); font-size: clamp(12px, 1.5vw, 15px); letter-spacing: .03em; line-height: 1.7; color: rgba(242,242,240,.6); overflow-wrap: anywhere; }
+  .k-addr .gold { color: var(--m-gold); font-weight: 700; text-shadow: 0 0 22px rgba(232,185,62,.55); }
+  .k-addr.locked { color: rgba(242,242,240,.95); }
+  .k-reward { min-height: 22px; margin-top: 10px; font-size: 18px; font-weight: 800; color: var(--m-gold); font-variant-numeric: tabular-nums; opacity: 0; transform: translateY(4px); transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out); }
+  .k-reward.show { opacity: 1; transform: none; }
+  @media (max-width: 900px) {
+    .k-body { grid-template-columns: 1fr; gap: 32px; }
+    .k-sub { max-width: none; }
+  }
+  /* 2026-10-05 finalverify: keep the 2-line nowrap lockup, scale to fit.
+     Measured: "TURN COMPUTE" in Anton = 435px @ 54px (8.0556 px/px).
+     10.6vw keeps the longest line inside (viewport - 36px padding) with
+     >=10px margin at 320px, the tightest case. */
+  @media (max-width: 480px) {
+    .k-h1 { font-size: 10.6vw; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .v-enter { animation: none; }
+    .k-reward { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="m-top v-enter" style="--d:0ms">
+  <div class="m-wordmark"><span class="m-mark"></span>grindtokens</div>
+  <div class="m-live"><span class="dot"></span><span id="netCount">48,211</span>grinding now <span class="m-demo">demo</span></div>
+</div>
+
+<div class="k-body">
+  <div>
+    <h1 class="k-h1 v-enter" style="--d:60ms"><span class="ln">Turn compute</span><span class="ln">into tokens</span></h1>
+    <p class="k-sub v-enter" style="--d:140ms">Your machine rolls. Rare addresses earn. Free to start, nothing to trust.</p>
+    <div class="k-cta-row v-enter" style="--d:220ms">
+      <a href="grinder-mockup.html" class="m-cta k-cta" id="ctaBtn">Start grinding</a>
+    </div>
+    <div class="m-fine k-fine v-enter" style="--d:300ms">No signup. No team. No presale.</div>
+  </div>
+  <div class="k-side v-enter" style="--d:200ms">
+    <div class="k-stats">
+      <div class="k-stat"><div class="label"><span class="dot"></span>ROLLS / SEC</div><div class="value" id="rollsSec">4.82<small>M</small> <span class="m-demo">demo</span></div><div class="sub">GPU &middot; 98% util</div></div>
+      <div class="k-stat"><div class="label"><span class="dot"></span>HITS</div><div class="value" id="hitsVal">1,204 <span class="m-demo">demo</span></div><div class="sub">this session</div></div>
+      <div class="k-stat"><div class="label"><span class="dot"></span>GRINDERS</div><div class="value" id="netCount2">48,211</div><div class="sub">online now &middot; <span class="m-demo">demo</span></div></div>
+      <div class="k-stat"><div class="label"><span class="dot"></span>EST / DAY</div><div class="value">312<small> tokens</small> <span class="m-demo">demo</span></div><div class="sub">at current difficulty</div></div>
+    </div>
+    <div class="k-roll">
+      <div class="label">live roll &middot; proof, not promise</div>
+      <div class="k-addr" id="rollAddr"></div>
+      <div class="k-reward" id="rollReward"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const GLYPHS = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+const HITS = [
+  { p: 'Gr1nd', amt: 240 },
+  { p: 'GR1D', amt: 18 },
+  { p: '9Xk2', amt: 18 }
+];
+const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+function randStr(n) {
+  let s = '';
+  for (let i = 0; i < n; i++) s += GLYPHS[(Math.random() * GLYPHS.length) | 0];
+  return s;
+}
+function fmt(n) { return Math.round(n).toLocaleString('en-US'); }
+
+const addrEl = document.getElementById('rollAddr');
+const resEl = document.getElementById('rollReward');
+const netEl = document.getElementById('netCount');
+const net2El = document.getElementById('netCount2');
+const hitsEl = document.getElementById('hitsVal');
+const rsEl = document.getElementById('rollsSec');
+const cta = document.getElementById('ctaBtn');
+let net = 48211, hits = 1204, frozen = false;
+
+function landHit() {
+  if (frozen) return;
+  frozen = true;
+  const h = HITS[(Math.random() * HITS.length) | 0];
+  const full = h.p + randStr(44 - h.p.length);
+  addrEl.classList.add('locked');
+  addrEl.innerHTML = '<span class="gold">' + h.p + '</span>' + full.slice(h.p.length, 22) + ' ' + full.slice(22);
+  resEl.innerHTML = '+' + h.amt + ' tokens <span class="m-demo">demo</span>';
+  resEl.classList.add('show');
+  hits++;
+  hitsEl.innerHTML = fmt(hits) + ' <span class="m-demo">demo</span>';
+  setTimeout(() => {
+    frozen = false;
+    addrEl.classList.remove('locked');
+    resEl.classList.remove('show');
+    setTimeout(() => { resEl.textContent = ''; }, 240);
+    setTimeout(landHit, 3600 + Math.random() * 3200);
+  }, 2600);
+}
+
+if (!REDUCED) {
+  addrEl.textContent = randStr(44);
+  setInterval(() => {
+    if (frozen) return;
+    addrEl.textContent = randStr(44);
+  }, 110);
+  setTimeout(landHit, 2800);
+} else {
+  landHit();
+  setInterval(landHit, 7000);
+}
+setInterval(() => {
+  net += Math.floor((Math.random() - 0.45) * 14);
+  netEl.textContent = fmt(net);
+  net2El.textContent = fmt(net);
+  rsEl.innerHTML = (4.7 + Math.random() * 0.2).toFixed(2) + '<small>M</small> <span class="m-demo">demo</span>';
+}, 1500);
+
+// handoff to the grinder: guarded, self-disabling transition
+let leaving = false;
+cta.addEventListener('click', (e) => {
+  e.preventDefault();
+  if (leaving) return;
+  leaving = true;
+  cta.setAttribute('aria-disabled', 'true');
+  cta.style.pointerEvents = 'none';
+  cta.style.opacity = '.85';
+  cta.textContent = 'Starting\u2026';
+  setTimeout(() => { location.assign('grinder-mockup.html'); }, 350);
+});
+</script>
+</body>
+</html>

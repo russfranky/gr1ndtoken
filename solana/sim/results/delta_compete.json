@@ -1,0 +1,56 @@
+[
+ {
+  "compete_median": 0.25,
+  "sell_frac": 0.5,
+  "catches": "0/5",
+  "comp_days_mean": 9.0,
+  "final_miners_mean": 0.0,
+  "price_end_mean": 0.02,
+  "mean_sell": 0.5
+ },
+ {
+  "compete_median": 0.25,
+  "sell_frac": 0.7,
+  "catches": "1/5",
+  "comp_days_mean": 19.6,
+  "final_miners_mean": 21.5,
+  "price_end_mean": 0.7,
+  "mean_sell": 0.7
+ },
+ {
+  "compete_median": 0.5,
+  "sell_frac": 0.5,
+  "catches": "0/5",
+  "comp_days_mean": 9.0,
+  "final_miners_mean": 0.0,
+  "price_end_mean": 0.02,
+  "mean_sell": 0.5
+ },
+ {
+  "compete_median": 0.5,
+  "sell_frac": 0.7,
+  "catches": "1/5",
+  "comp_days_mean": 13.4,
+  "final_miners_mean": 11.9,
+  "price_end_mean": 0.32,
+  "mean_sell": 0.7
+ },
+ {
+  "compete_median": 1.0,
+  "sell_frac": 0.5,
+  "catches": "3/5",
+  "comp_days_mean": 11.4,
+  "final_miners_mean": 58.3,
+  "price_end_mean": 2.75,
+  "mean_sell": 0.5
+ },
+ {
+  "compete_median": 1.0,
+  "sell_frac": 0.7,
+  "catches": "0/5",
+  "comp_days_mean": 4.8,
+  "final_miners_mean": 10.4,
+  "price_end_mean": 1.92,
+  "mean_sell": 0.7
+ }
+]
